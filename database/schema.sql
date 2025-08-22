@@ -1,22 +1,16 @@
+
 -- =====================================
 -- Enable UUID Extension
 -- =====================================
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- =====================================
--- Clear existing policies and triggers
+-- Drop existing policies and tables if needed
 -- =====================================
-DROP TRIGGER IF EXISTS set_user_id_trigger ON user_submissions;
-DROP FUNCTION IF EXISTS set_user_id();
-
--- Drop all existing RLS policies
-DROP POLICY IF EXISTS "Users can read their own data" ON users;
-DROP POLICY IF EXISTS "Users can insert themselves" ON users;
-DROP POLICY IF EXISTS "Users can update themselves" ON users;
-DROP POLICY IF EXISTS "Users can read their own submissions" ON user_submissions;
-DROP POLICY IF EXISTS "Users can insert their own submissions" ON user_submissions;
-DROP POLICY IF EXISTS "Users can update their own submissions" ON user_submissions;
-DROP POLICY IF EXISTS "Users can delete their own submissions" ON user_submissions;
+DROP POLICY IF EXISTS "Users can manage own data" ON users;
+DROP POLICY IF EXISTS "Users can manage own submissions" ON user_submissions;
+DROP POLICY IF EXISTS "Anyone can read chapters" ON chapters;
+DROP POLICY IF EXISTS "Anyone can read slokas" ON slokas;
 
 -- =====================================
 -- TABLE: CHAPTERS
@@ -61,7 +55,7 @@ CREATE TABLE IF NOT EXISTS users (
 -- =====================================
 CREATE TABLE IF NOT EXISTS user_submissions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL, -- Remove the foreign key constraint temporarily
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
     sloka_id UUID REFERENCES slokas(id) ON DELETE CASCADE,
     recitation_audio_url TEXT,
     explanation_audio_url TEXT,
@@ -72,51 +66,46 @@ CREATE TABLE IF NOT EXISTS user_submissions (
 );
 
 -- =====================================
--- DISABLE RLS temporarily to test
+-- DISABLE RLS for simplicity (enable later if needed)
 -- =====================================
 ALTER TABLE users DISABLE ROW LEVEL SECURITY;
 ALTER TABLE user_submissions DISABLE ROW LEVEL SECURITY;
 ALTER TABLE chapters DISABLE ROW LEVEL SECURITY;
 ALTER TABLE slokas DISABLE ROW LEVEL SECURITY;
 
--- Alternative: Enable RLS but allow authenticated users to manage their own data
--- ALTER TABLE users ENABLE ROW LEVEL SECURITY;
--- CREATE POLICY "Users can read own data" ON users FOR SELECT USING (auth.uid()::text = id);
--- CREATE POLICY "Users can insert own data" ON users FOR INSERT WITH CHECK (auth.uid()::text = id);
--- CREATE POLICY "Users can update own data" ON users FOR UPDATE USING (auth.uid()::text = id);
-
 -- =====================================
 -- STORAGE SETUP
 -- =====================================
--- Ensure bucket exists
+-- Ensure audio bucket exists
 INSERT INTO storage.buckets (id, name, public)
 VALUES ('audio', 'audio', true)
 ON CONFLICT (id) DO NOTHING;
 
--- Clear all storage policies
-DROP POLICY IF EXISTS "Users can upload their own audio files" ON storage.objects;
-DROP POLICY IF EXISTS "Users can read their own audio files" ON storage.objects;
-DROP POLICY IF EXISTS "Users can delete their own audio files" ON storage.objects;
-DROP POLICY IF EXISTS "Public can read audio files" ON storage.objects;
+-- Clear existing storage policies
+DELETE FROM storage.policies WHERE bucket_id = 'audio';
 
--- Simple storage policies
-CREATE POLICY "Anyone can upload audio files"
-ON storage.objects
-FOR INSERT
+-- Simple open storage policies for audio files
+CREATE POLICY "Public can upload audio files"
+ON storage.objects FOR INSERT
 WITH CHECK (bucket_id = 'audio');
 
-CREATE POLICY "Anyone can read audio files"
-ON storage.objects
-FOR SELECT
+CREATE POLICY "Public can read audio files"
+ON storage.objects FOR SELECT
 USING (bucket_id = 'audio');
 
-CREATE POLICY "Anyone can delete audio files"
-ON storage.objects
-FOR DELETE
+CREATE POLICY "Public can delete audio files"
+ON storage.objects FOR DELETE
 USING (bucket_id = 'audio');
 
-CREATE POLICY "Anyone can update audio files"
-ON storage.objects
-FOR UPDATE
-USING (bucket_id = 'audio')
-WITH CHECK (bucket_id = 'audio');
+CREATE POLICY "Public can update audio files"
+ON storage.objects FOR UPDATE
+USING (bucket_id = 'audio');
+
+-- =====================================
+-- CREATE INDEXES FOR PERFORMANCE
+-- =====================================
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_chapters_number ON chapters(chapter_number);
+CREATE INDEX IF NOT EXISTS idx_slokas_chapter ON slokas(chapter_id, sloka_number);
+CREATE INDEX IF NOT EXISTS idx_submissions_user ON user_submissions(user_id);
+CREATE INDEX IF NOT EXISTS idx_submissions_sloka ON user_submissions(sloka_id);
