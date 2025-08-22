@@ -270,10 +270,7 @@ with st.container():
                         user_id = user_obj.id
                         st.write(f"Debug: Successfully authenticated user ID: {user_id}")
 
-                        # Check if email is confirmed
-                        if not user_obj.email_confirmed_at:
-                            st.markdown('<div class="warning-message">📧 Please check your email and confirm your account before signing in.</div>', unsafe_allow_html=True)
-                            st.stop()
+                        # Skip email confirmation check - allow immediate login
 
                         # Try to get or create user profile
                         try:
@@ -322,8 +319,8 @@ with st.container():
                     
                     # Handle specific error cases
                     if "Invalid login credentials" in error_msg or "invalid_credentials" in error_msg:
-                        st.markdown('<div class="error-message">❌ Invalid email or password. If you just signed up, please check your email for confirmation first.</div>', unsafe_allow_html=True)
-                        st.markdown('<div class="info-message">💡 <strong>Troubleshooting:</strong><br/>• Make sure you\'ve confirmed your email address<br/>• Check that your password is correct<br/>• Try signing up again if you haven\'t received a confirmation email</div>', unsafe_allow_html=True)
+                        st.markdown('<div class="error-message">❌ Invalid email or password. Please check your credentials.</div>', unsafe_allow_html=True)
+                        st.markdown('<div class="info-message">💡 <strong>Troubleshooting:</strong><br/>• Check that your email and password are correct<br/>• Try signing up if you don\'t have an account yet</div>', unsafe_allow_html=True)
                     elif "Email not confirmed" in error_msg or "email_not_confirmed" in error_msg:
                         st.markdown('<div class="warning-message">📧 Please confirm your email address before signing in. Check your email inbox for a confirmation link.</div>', unsafe_allow_html=True)
                     elif "signup_disabled" in error_msg:
@@ -334,7 +331,7 @@ with st.container():
                         # Offer password reset option
                         with st.expander("Need help?"):
                             st.write("If you're having trouble signing in:")
-                            st.write("1. Make sure your email is confirmed")
+                            st.write("1. Double-check your email and password")
                             st.write("2. Try resetting your password")
                             
                             if st.button("Send Password Reset Email"):
@@ -369,11 +366,8 @@ with st.container():
                         user_id = auth_response.user.id
                         st.write(f"Debug: User ID from auth: {user_id}")
                         
-                        # Check if email confirmation is required
-                        if hasattr(auth_response, 'session') and auth_response.session is None:
-                            st.markdown('<div class="warning-message">📧 Please check your email and confirm your account before signing in.</div>', unsafe_allow_html=True)
-                            st.markdown('<div class="info-message">After confirming your email, you can sign in with your credentials.</div>', unsafe_allow_html=True)
-                        else:
+                        # Proceed with user creation regardless of email confirmation
+                        if True:  # Always proceed
                             # Create user row if not exists — use admin to check/insert
                             try:
                                 st.write(f"Debug: Creating user profile in database...")
