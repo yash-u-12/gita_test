@@ -259,7 +259,7 @@ with st.container():
                     # Check if the user exists in auth but is unconfirmed
                     if hasattr(auth_response, 'user') and auth_response.user and not auth_response.user.email_confirmed_at:
                         st.markdown('<div class="warning-message">📧 Please check your email and confirm your account before signing in. If you haven\'t received the email, try signing up again.</div>', unsafe_allow_html=True)
-                        return
+                        st.stop()
 
                     if auth_response and getattr(auth_response, "user", None):
                         user_obj = auth_response.user
