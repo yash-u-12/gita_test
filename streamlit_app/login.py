@@ -253,21 +253,31 @@ with st.container():
             else:
                 try:
                     st.write(f"Debug: Attempting signin for email: {email}")
-                    auth_response = supabase.auth.sign_in_with_password({"email": email, "password": password})
-                    st.write(f"Debug: Signin response: {auth_response}")
                     
-                    # Check if the user exists in auth but is unconfirmed
-                    if hasattr(auth_response, 'user') and auth_response.user and not auth_response.user.email_confirmed_at:
-                        st.markdown('<div class="warning-message">📧 Please check your email and confirm your account before signing in. If you haven\'t received the email, try signing up again.</div>', unsafe_allow_html=True)
-                        st.stop()
-
-                    if auth_response and getattr(auth_response, "user", None):
+                    # Clear any existing session first
+                    try:
+                        supabase.auth.sign_out()
+                    except:
+                        pass  # Ignore sign out errors
+                    
+                    # Attempt signin
+                    auth_response = supabase.auth.sign_in_with_password({"email": email, "password": password})
+                    st.write(f"Debug: Signin response type: {type(auth_response)}")
+                    
+                    # Handle successful authentication
+                    if auth_response and hasattr(auth_response, 'user') and auth_response.user:
                         user_obj = auth_response.user
                         user_id = user_obj.id
+                        st.write(f"Debug: Successfully authenticated user ID: {user_id}")
+
+                        # Check if email is confirmed
+                        if not user_obj.email_confirmed_at:
+                            st.markdown('<div class="warning-message">📧 Please check your email and confirm your account before signing in.</div>', unsafe_allow_html=True)
+                            st.stop()
 
                         # Try to get or create user profile
                         try:
-                            st.write(f"Debug: Looking for user with ID: {user_id}")
+                            st.write(f"Debug: Looking for user profile with ID: {user_id}")
                             
                             # First try to find existing user
                             existing = db_manager.get_user_by_id(user_id)
@@ -277,7 +287,6 @@ with st.container():
                                 st.markdown('<div class="success-message">✅ Sign in successful — redirecting...</div>', unsafe_allow_html=True)
                                 st.session_state["user"] = {"id": existing["id"], "email": existing["email"], "name": existing["name"]}
                                 st.switch_page("pages/user_portal.py")
-                                st.rerun()
                             else:
                                 # User exists in auth but not in users table - create profile
                                 st.write("Debug: User not found in users table, creating profile...")
@@ -297,27 +306,43 @@ with st.container():
                                     st.markdown('<div class="success-message">✅ Profile created and sign in successful — redirecting...</div>', unsafe_allow_html=True)
                                     st.session_state["user"] = {"id": created["id"], "email": created["email"], "name": created["name"]}
                                     st.switch_page("pages/user_portal.py")
-                                    st.rerun()
                                 else:
                                     st.markdown('<div class="error-message">❌ Could not create user profile. Please contact support.</div>', unsafe_allow_html=True)
-                                    st.write("Debug: Profile creation failed, please run the fix script")
                                     
                         except Exception as db_error:
                             st.markdown(f'<div class="error-message">❌ Database error: {str(db_error)}</div>', unsafe_allow_html=True)
                             st.write(f"Debug: Database error details: {db_error}")
                     else:
-                        st.markdown('<div class="error-message">❌ Sign in failed. Check your credentials.</div>', unsafe_allow_html=True)
+                        st.markdown('<div class="error-message">❌ Authentication failed. Invalid response from server.</div>', unsafe_allow_html=True)
+                        st.write(f"Debug: Auth response: {auth_response}")
+                        
                 except Exception as e:
                     error_msg = str(e)
                     st.write(f"Debug: Full error details: {e}")
+                    
+                    # Handle specific error cases
                     if "Invalid login credentials" in error_msg or "invalid_credentials" in error_msg:
-                        st.markdown('<div class="error-message">❌ Invalid email or password. Please check your credentials. If you just signed up, make sure to confirm your email first.</div>', unsafe_allow_html=True)
+                        st.markdown('<div class="error-message">❌ Invalid email or password. If you just signed up, please check your email for confirmation first.</div>', unsafe_allow_html=True)
+                        st.markdown('<div class="info-message">💡 <strong>Troubleshooting:</strong><br/>• Make sure you\'ve confirmed your email address<br/>• Check that your password is correct<br/>• Try signing up again if you haven\'t received a confirmation email</div>', unsafe_allow_html=True)
                     elif "Email not confirmed" in error_msg or "email_not_confirmed" in error_msg:
                         st.markdown('<div class="warning-message">📧 Please confirm your email address before signing in. Check your email inbox for a confirmation link.</div>', unsafe_allow_html=True)
                     elif "signup_disabled" in error_msg:
                         st.markdown('<div class="error-message">❌ User registration is disabled. Please contact the administrator.</div>', unsafe_allow_html=True)
                     else:
                         st.markdown(f'<div class="error-message">❌ Sign in error: {error_msg}</div>', unsafe_allow_html=True)
+                        
+                        # Offer password reset option
+                        with st.expander("Need help?"):
+                            st.write("If you're having trouble signing in:")
+                            st.write("1. Make sure your email is confirmed")
+                            st.write("2. Try resetting your password")
+                            
+                            if st.button("Send Password Reset Email"):
+                                try:
+                                    supabase.auth.reset_password_email(email)
+                                    st.success("Password reset email sent! Check your inbox.")
+                                except Exception as reset_error:
+                                    st.error(f"Could not send reset email: {reset_error}")
 
     # ----------------- SIGN UP -----------------
     else:
