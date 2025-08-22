@@ -226,16 +226,22 @@ st.markdown("""
 with st.container():
     st.markdown('<div class="auth-container">', unsafe_allow_html=True)
     
-    # Tab selection
-    col1, col2 = st.columns(2)
-    with col1:
-        signin_selected = st.button("Sign In", key="signin_tab", use_container_width=True)
-    with col2:
-        signup_selected = st.button("Sign Up", key="signup_tab", use_container_width=True)
-    
-    # Default to sign in if no selection
-    if not signin_selected and not signup_selected:
-        signin_selected = True
+    # Check for session state tab switching
+    if st.session_state.get('switch_to_signup', False):
+        st.session_state.switch_to_signup = False
+        signup_selected = True
+        signin_selected = False
+    else:
+        # Tab selection
+        col1, col2 = st.columns(2)
+        with col1:
+            signin_selected = st.button("Sign In", key="signin_tab", use_container_width=True)
+        with col2:
+            signup_selected = st.button("Sign Up", key="signup_tab", use_container_width=True)
+        
+        # Default to sign in if no selection
+        if not signin_selected and not signup_selected:
+            signin_selected = True
     
     # ----------------- SIGN IN -----------------
     if signin_selected:
@@ -320,7 +326,13 @@ with st.container():
                     # Handle specific error cases
                     if "Invalid login credentials" in error_msg or "invalid_credentials" in error_msg:
                         st.markdown('<div class="error-message">❌ Invalid email or password. Please check your credentials.</div>', unsafe_allow_html=True)
-                        st.markdown('<div class="info-message">💡 <strong>Troubleshooting:</strong><br/>• Check that your email and password are correct<br/>• Try signing up if you don\'t have an account yet</div>', unsafe_allow_html=True)
+                        st.markdown('<div class="info-message">💡 <strong>Troubleshooting:</strong><br/>• Check that your email and password are correct<br/>• If you don\'t have an account, please sign up first using the Sign Up tab above</div>', unsafe_allow_html=True)
+                        
+                        # Add a direct link to switch to signup
+                        st.markdown("---")
+                        if st.button("🆕 Don't have an account? Sign Up Here", use_container_width=True):
+                            st.session_state.switch_to_signup = True
+                            st.rerun()
                     elif "Email not confirmed" in error_msg or "email_not_confirmed" in error_msg:
                         st.markdown('<div class="warning-message">📧 Please confirm your email address before signing in. Check your email inbox for a confirmation link.</div>', unsafe_allow_html=True)
                     elif "signup_disabled" in error_msg:
@@ -379,8 +391,10 @@ with st.container():
                                     st.markdown('<div class="success-message">✅ Account created successfully! Welcome to Gita Guru.</div>', unsafe_allow_html=True)
                                     st.session_state["user"] = {"id": created["id"], "email": email, "name": name}
                                     
+                                    # Add a small delay to let user see the success message
+                                    import time
+                                    time.sleep(1)
                                     st.switch_page("pages/user_portal.py")
-                                    st.rerun()
                                 else:
                                     st.markdown('<div class="error-message">❌ User profile creation failed. Please try again.</div>', unsafe_allow_html=True)
                             except Exception as db_error:
