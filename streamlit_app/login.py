@@ -265,17 +265,13 @@ with st.container():
                         user_obj = auth_response.user
                         user_id = user_obj.id
 
-                        # Use admin client to check users table (bypass RLS) so existing users are detected reliably
+                        # Try to get or create user profile
                         try:
                             st.write(f"Debug: Looking for user with ID: {user_id}")
-                            if admin_client:
-                                res = admin_client.table("users").select("*").eq("id", user_id).execute()
-                                existing = res.data[0] if res.data else None
-                            else:
-                                # Fallback to regular client if admin client not available
-                                res = supabase.table("users").select("*").eq("id", user_id).execute()
-                                existing = res.data[0] if res.data else None
-                            st.write(f"Debug: Found user: {existing}")
+                            
+                            # First try to find existing user
+                            existing = db_manager.get_user_by_id(user_id)
+                            st.write(f"Debug: Found existing user: {existing}")
 
                             if existing:
                                 st.markdown('<div class="success-message">✅ Sign in successful — redirecting...</div>', unsafe_allow_html=True)
@@ -283,20 +279,32 @@ with st.container():
                                 st.switch_page("pages/user_portal.py")
                                 st.rerun()
                             else:
-                                # Try to create user profile if it doesn't exist
-                                try:
-                                    created = db_manager.create_user_if_not_exists(user_id=user_id, name=user_obj.email, email=user_obj.email)
-                                    if created:
-                                        st.markdown('<div class="success-message">✅ Profile created and sign in successful — redirecting...</div>', unsafe_allow_html=True)
-                                        st.session_state["user"] = {"id": created["id"], "email": created["email"], "name": created["name"]}
-                                        st.switch_page("pages/user_portal.py")
-                                        st.rerun()
-                                    else:
-                                        st.markdown('<div class="warning-message">⚠️ Could not create user profile. Please contact support.</div>', unsafe_allow_html=True)
-                                except Exception as create_error:
-                                    st.markdown(f'<div class="error-message">❌ Profile creation failed: {str(create_error)}</div>', unsafe_allow_html=True)
+                                # User exists in auth but not in users table - create profile
+                                st.write("Debug: User not found in users table, creating profile...")
+                                
+                                # Use email as name if no display name available
+                                display_name = getattr(user_obj, 'user_metadata', {}).get('name', user_obj.email)
+                                if not display_name:
+                                    display_name = user_obj.email.split('@')[0]  # Use part before @ as name
+                                
+                                created = db_manager.create_user_if_not_exists(
+                                    user_id=user_id, 
+                                    name=display_name, 
+                                    email=user_obj.email
+                                )
+                                
+                                if created:
+                                    st.markdown('<div class="success-message">✅ Profile created and sign in successful — redirecting...</div>', unsafe_allow_html=True)
+                                    st.session_state["user"] = {"id": created["id"], "email": created["email"], "name": created["name"]}
+                                    st.switch_page("pages/user_portal.py")
+                                    st.rerun()
+                                else:
+                                    st.markdown('<div class="error-message">❌ Could not create user profile. Please contact support.</div>', unsafe_allow_html=True)
+                                    st.write("Debug: Profile creation failed, please run the fix script")
+                                    
                         except Exception as db_error:
                             st.markdown(f'<div class="error-message">❌ Database error: {str(db_error)}</div>', unsafe_allow_html=True)
+                            st.write(f"Debug: Database error details: {db_error}")
                     else:
                         st.markdown('<div class="error-message">❌ Sign in failed. Check your credentials.</div>', unsafe_allow_html=True)
                 except Exception as e:

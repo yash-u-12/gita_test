@@ -2,6 +2,7 @@ import os
 import uuid
 from supabase import create_client, Client
 from config import SUPABASE_URL, SUPABASE_KEY, SUPABASE_SERVICE_ROLE_KEY
+from datetime import datetime
 
 class DatabaseManager:
     def __init__(self):
@@ -121,57 +122,82 @@ class DatabaseManager:
             return None
 
     def get_user_by_id(self, user_id: str):
+        """Get user by ID"""
         try:
+            # Try with admin client first if available
             if self.admin_client:
-                result = self.admin_client.table('users').select('*').eq('id', user_id).execute()
-            else:
-                result = self.supabase.table('users').select('*').eq('id', user_id).execute()
+                try:
+                    result = self.admin_client.table("users").select("*").eq("id", user_id).execute()
+                    user = result.data[0] if result.data else None
+                    if user:
+                        return user
+                except Exception:
+                    pass
+
+            # Fallback to regular client
+            result = self.supabase.table("users").select("*").eq("id", user_id).execute()
             return result.data[0] if result.data else None
         except Exception as e:
-            print(f"Error getting user by id: {e}")
+            print(f"Error fetching user by ID: {e}")
             return None
 
     def create_user_if_not_exists(self, user_id: str, name: str, email: str):
-        """
-        Ensure a single canonical user row: check by id and email and create only when missing.
-        Returns existing/new user row.
-        """
+        """Create a user if they don't exist, return user data"""
         try:
-            # Check by id
-            existing = self.get_user_by_id(user_id)
-            if existing:
-                return existing
-
-            # Check by email
-            existing = self.get_user_by_email(email)
-            if existing:
-                return existing
-
-            # Try to insert using available client
+            # First check if user exists using admin client if available
+            existing = None
             if self.admin_client:
-                # Use admin client if available (bypasses RLS)
-                result = self.admin_client.table('users').insert({
-                    'id': user_id,
-                    'name': name,
-                    'email': email
-                }).execute()
-            else:
-                # Use regular client (subject to RLS policies)
-                result = self.supabase.table('users').insert({
-                    'id': user_id,
-                    'name': name,
-                    'email': email
-                }).execute()
+                try:
+                    result = self.admin_client.table("users").select("*").eq("id", user_id).execute()
+                    existing = result.data[0] if result.data else None
+                except Exception:
+                    pass
 
-            return result.data[0] if result.data else None
-        except Exception as e:
-            print(f"Error creating user: {e}")
-            # Return a mock user object if creation fails
-            return {
-                'id': user_id,
-                'name': name,
-                'email': email
+            if not existing:
+                # Fallback to regular client
+                try:
+                    result = self.supabase.table("users").select("*").eq("id", user_id).execute()
+                    existing = result.data[0] if result.data else None
+                except Exception:
+                    pass
+
+            if existing:
+                print(f"✅ User already exists: {existing}")
+                return existing
+
+            # Create new user
+            user_data = {
+                "id": user_id,
+                "name": name,
+                "email": email,
+                "created_at": datetime.utcnow().isoformat()
             }
+
+            print(f"Creating user with data: {user_data}")
+
+            # Try with admin client first if available
+            if self.admin_client:
+                try:
+                    result = self.admin_client.table("users").insert(user_data).execute()
+                    if result.data:
+                        print(f"✅ User created successfully with admin client: {result.data[0]}")
+                        return result.data[0]
+                except Exception as admin_error:
+                    print(f"Admin client failed: {admin_error}")
+
+            # Fallback to regular client
+            result = self.supabase.table("users").insert(user_data).execute()
+
+            if result.data:
+                print(f"✅ User created successfully: {result.data[0]}")
+                return result.data[0]
+            else:
+                print("❌ Failed to create user - no data returned")
+                return None
+
+        except Exception as e:
+            print(f"❌ Error creating user: {str(e)}")
+            return None
 
     # ---------------- Submissions ----------------
     def create_user_submission(self, user_id: str, sloka_id: str, recitation_audio_url: str = None, explanation_audio_url: str = None):

@@ -79,6 +79,12 @@ ALTER TABLE user_submissions DISABLE ROW LEVEL SECURITY;
 ALTER TABLE chapters DISABLE ROW LEVEL SECURITY;
 ALTER TABLE slokas DISABLE ROW LEVEL SECURITY;
 
+-- Alternative: Enable RLS but allow authenticated users to manage their own data
+-- ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+-- CREATE POLICY "Users can read own data" ON users FOR SELECT USING (auth.uid()::text = id);
+-- CREATE POLICY "Users can insert own data" ON users FOR INSERT WITH CHECK (auth.uid()::text = id);
+-- CREATE POLICY "Users can update own data" ON users FOR UPDATE USING (auth.uid()::text = id);
+
 -- =====================================
 -- STORAGE SETUP
 -- =====================================
