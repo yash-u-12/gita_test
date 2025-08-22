@@ -255,6 +255,11 @@ with st.container():
                     st.write(f"Debug: Attempting signin for email: {email}")
                     auth_response = supabase.auth.sign_in_with_password({"email": email, "password": password})
                     st.write(f"Debug: Signin response: {auth_response}")
+                    
+                    # Check if the user exists in auth but is unconfirmed
+                    if hasattr(auth_response, 'user') and auth_response.user and not auth_response.user.email_confirmed_at:
+                        st.markdown('<div class="warning-message">📧 Please check your email and confirm your account before signing in. If you haven\'t received the email, try signing up again.</div>', unsafe_allow_html=True)
+                        return
 
                     if auth_response and getattr(auth_response, "user", None):
                         user_obj = auth_response.user
@@ -296,10 +301,13 @@ with st.container():
                         st.markdown('<div class="error-message">❌ Sign in failed. Check your credentials.</div>', unsafe_allow_html=True)
                 except Exception as e:
                     error_msg = str(e)
-                    if "Invalid login credentials" in error_msg:
-                        st.markdown('<div class="error-message">❌ Invalid email or password. Please check your credentials.</div>', unsafe_allow_html=True)
-                    elif "Email not confirmed" in error_msg:
-                        st.markdown('<div class="warning-message">📧 Please confirm your email address before signing in.</div>', unsafe_allow_html=True)
+                    st.write(f"Debug: Full error details: {e}")
+                    if "Invalid login credentials" in error_msg or "invalid_credentials" in error_msg:
+                        st.markdown('<div class="error-message">❌ Invalid email or password. Please check your credentials. If you just signed up, make sure to confirm your email first.</div>', unsafe_allow_html=True)
+                    elif "Email not confirmed" in error_msg or "email_not_confirmed" in error_msg:
+                        st.markdown('<div class="warning-message">📧 Please confirm your email address before signing in. Check your email inbox for a confirmation link.</div>', unsafe_allow_html=True)
+                    elif "signup_disabled" in error_msg:
+                        st.markdown('<div class="error-message">❌ User registration is disabled. Please contact the administrator.</div>', unsafe_allow_html=True)
                     else:
                         st.markdown(f'<div class="error-message">❌ Sign in error: {error_msg}</div>', unsafe_allow_html=True)
 
