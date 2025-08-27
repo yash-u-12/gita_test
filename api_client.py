@@ -247,3 +247,7 @@ class SwechaAPIClient:
 
 # Global API client instance
 api_client = SwechaAPIClient()
+
+def get_api_client():
+    """Get the global API client instance"""
+    return api_client
