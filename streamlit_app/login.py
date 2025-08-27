@@ -1,10 +1,9 @@
-
 import streamlit as st
 import os
 from supabase import create_client
 from config import SUPABASE_URL, SUPABASE_KEY
 from database.db_utils import get_db_manager
-from api_client import api_client
+from api_client import api_client, get_api_client
 
 # Initialize Supabase client for reference audio only
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -99,15 +98,15 @@ def show_auth_forms():
 
     with tab2:
         st.subheader("Create Account")
-        
+
         if st.session_state.signup_step == 'phone':
             with st.form("send_otp_form"):
                 phone_number = st.text_input("Phone Number", placeholder="Enter your phone number")
                 submit = st.form_submit_button("Send OTP")
-                
+
                 if submit and phone_number:
                     handle_send_otp(phone_number)
-        
+
         elif st.session_state.signup_step == 'verify':
             st.info(f"OTP sent to {st.session_state.signup_phone}")
             with st.form("verify_otp_form"):
@@ -116,7 +115,7 @@ def show_auth_forms():
                 email = st.text_input("Email (optional)")
                 password = st.text_input("Password", type="password")
                 confirm_password = st.text_input("Confirm Password", type="password")
-                
+
                 col1, col2 = st.columns(2)
                 with col1:
                     submit = st.form_submit_button("Create Account")
@@ -143,9 +142,9 @@ def show_main_app():
         st.write(f"Phone: {st.session_state.user_phone}")
         if st.session_state.user_email:
             st.write(f"Email: {st.session_state.user_email}")
-        
+
         st.markdown("---")
-        
+
         # User contributions section
         if st.button("View My Contributions"):
             try:
@@ -158,7 +157,7 @@ def show_main_app():
                     st.error("Failed to load contributions")
             except Exception as e:
                 st.error(f"Error loading contributions: {str(e)}")
-        
+
         if st.button("Logout"):
             # Clear session and API client
             api_client.auth_token = None
@@ -246,9 +245,9 @@ def show_main_app():
                                     audio_data = recitation_file.read()
                                     filename = f"recitation_{st.session_state.user_id}_{selected_sloka['id']}_{recitation_file.name}"
                                     title = f"Sloka {selected_sloka['sloka_number']} Recitation - Chapter {selected_chapter['chapter_number']}"
-                                    
+
                                     # Upload using API client
-                                    response = api_client.upload_complete_audio(
+                                    response = get_api_client().upload_complete_audio(
                                         audio_data=audio_data,
                                         filename=filename,
                                         title=title,
@@ -285,9 +284,9 @@ def show_main_app():
                                     audio_data = explanation_file.read()
                                     filename = f"explanation_{st.session_state.user_id}_{selected_sloka['id']}_{explanation_file.name}"
                                     title = f"Sloka {selected_sloka['sloka_number']} Explanation - Chapter {selected_chapter['chapter_number']}"
-                                    
+
                                     # Upload using API client
-                                    response = api_client.upload_complete_audio(
+                                    response = get_api_client().upload_complete_audio(
                                         audio_data=audio_data,
                                         filename=filename,
                                         title=title,
