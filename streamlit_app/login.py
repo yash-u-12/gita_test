@@ -46,7 +46,21 @@ def handle_send_otp(phone_number):
             st.rerun()
             return True
         else:
-            st.error(f"Failed to send OTP: {response.get('data', {}).get('message', 'Unknown error')}")
+            # Better error handling with more details
+            error_data = response.get('data', {})
+            status_code = response.get('status_code', 'Unknown')
+            
+            if isinstance(error_data, dict):
+                error_message = error_data.get('message', error_data.get('error', 'Unknown error'))
+            else:
+                error_message = str(error_data)
+            
+            st.error(f"Failed to send OTP (Status: {status_code}): {error_message}")
+            
+            # Show debug info in expander for troubleshooting
+            with st.expander("Debug Information"):
+                st.json(response)
+            
             return False
     except Exception as e:
         st.error(f"Error sending OTP: {str(e)}")
@@ -108,11 +122,18 @@ def show_auth_forms():
 
         if st.session_state.signup_step == 'phone':
             with st.form("send_otp_form"):
-                phone_number = st.text_input("Phone Number", placeholder="Enter your phone number")
+                phone_number = st.text_input("Phone Number", placeholder="Enter your phone number (e.g., +91XXXXXXXXXX)")
                 submit = st.form_submit_button("Send OTP")
 
                 if submit and phone_number:
-                    handle_send_otp(phone_number)
+                    # Basic phone number validation
+                    phone_cleaned = phone_number.strip()
+                    if not phone_cleaned:
+                        st.error("Please enter a phone number")
+                    elif len(phone_cleaned) < 10:
+                        st.error("Phone number seems too short")
+                    else:
+                        handle_send_otp(phone_cleaned)
 
         elif st.session_state.signup_step == 'verify':
             st.info(f"OTP sent to {st.session_state.signup_phone}")
