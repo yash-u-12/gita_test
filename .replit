@@ -18,7 +18,7 @@ mode = "sequential"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "streamlit run streamlit_app/login.py --server.port 5000 --server.address 0.0.0.0"
+args = "streamlit run streamlit_app/login.py --server.port 5000 --server.address 0.0.0.0 --server.headless true --server.enableCORS false --server.enableWebsocketCompression false --server.enableXsrfProtection false"
 
 [[ports]]
 localPort = 5000
