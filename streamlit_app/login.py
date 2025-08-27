@@ -1,314 +1,247 @@
 import streamlit as st
-import sys
+import requests
+import json
 import os
-import uuid
-from datetime import datetime
-
-# Add the project root to Python path
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
-
 from supabase import create_client
 from config import SUPABASE_URL, SUPABASE_KEY
-from database.db_utils import db_manager
+from database.db_utils import get_db_manager
+from apis import signup_user, signin_user
+from audio import upload_audio
 
-# Initialize Supabase client
+# Initialize Supabase client for reference audio only
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+db_manager = get_db_manager()
 
-# Page configuration
-st.set_page_config(
-    page_title="Gita Guru - Divine Learning Platform",
-    page_icon="🕉️",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
+def init_session_state():
+    if 'user_id' not in st.session_state:
+        st.session_state.user_id = None
+    if 'user_name' not in st.session_state:
+        st.session_state.user_name = None
+    if 'user_email' not in st.session_state:
+        st.session_state.user_email = None
+    if 'logged_in' not in st.session_state:
+        st.session_state.logged_in = False
+    if 'selected_chapter' not in st.session_state:
+        st.session_state.selected_chapter = None
+    if 'selected_sloka' not in st.session_state:
+        st.session_state.selected_sloka = None
 
-# Custom CSS
-st.markdown("""
-<style>
-    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+def handle_signup(name, email, password):
+    try:
+        response = signup_user(name, email, password)
+        if response.get('success'):
+            st.success("Account created successfully! Please sign in.")
+            return True
+        else:
+            st.error(f"Signup failed: {response.get('message', 'Unknown error')}")
+            return False
+    except Exception as e:
+        st.error(f"Signup error: {str(e)}")
+        return False
 
-    .main {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        min-height: 100vh;
-        padding: 0;
-    }
+def handle_signin(email, password):
+    try:
+        response = signin_user(email, password)
+        if response.get('success'):
+            user_data = response.get('user', {})
+            st.session_state.user_id = user_data.get('id')
+            st.session_state.user_name = user_data.get('name')
+            st.session_state.user_email = user_data.get('email')
+            st.session_state.logged_in = True
+            st.success("Signed in successfully!")
+            st.rerun()
+            return True
+        else:
+            st.error(f"Sign in failed: {response.get('message', 'Invalid credentials')}")
+            return False
+    except Exception as e:
+        st.error(f"Sign in error: {str(e)}")
+        return False
 
-    .stApp {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    }
+def show_auth_forms():
+    st.title("🕉️ Gita Guru")
+    st.subheader("Welcome to the Bhagavad Gita Learning Platform")
 
-    .main-header {
-        text-align: center;
-        color: white;
-        font-family: 'Poppins', sans-serif;
-        margin-bottom: 2rem;
-    }
+    tab1, tab2 = st.tabs(["Sign In", "Sign Up"])
 
-    .main-title {
-        font-size: 3.5rem;
-        font-weight: 700;
-        margin-bottom: 0.5rem;
-        text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-    }
+    with tab1:
+        st.subheader("Sign In")
+        with st.form("signin_form"):
+            email = st.text_input("Email")
+            password = st.text_input("Password", type="password")
+            submit = st.form_submit_button("Sign In")
 
-    .subtitle {
-        font-size: 1.2rem;
-        font-weight: 300;
-        opacity: 0.9;
-        margin-bottom: 2rem;
-    }
+            if submit and email and password:
+                handle_signin(email, password)
 
-    .auth-container {
-        background: rgba(255, 255, 255, 0.95);
-        backdrop-filter: blur(10px);
-        border-radius: 20px;
-        padding: 3rem;
-        box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-        max-width: 500px;
-        margin: 0 auto;
-        border: 1px solid rgba(255,255,255,0.2);
-    }
+    with tab2:
+        st.subheader("Create Account")
+        with st.form("signup_form"):
+            name = st.text_input("Full Name")
+            email = st.text_input("Email")
+            password = st.text_input("Password", type="password")
+            confirm_password = st.text_input("Confirm Password", type="password")
+            submit = st.form_submit_button("Sign Up")
 
-    .stTextInput > div > div > input {
-        border-radius: 10px;
-        border: 2px solid #e9ecef;
-        padding: 12px 16px;
-        font-size: 16px;
-        transition: all 0.3s ease;
-    }
+            if submit:
+                if not all([name, email, password, confirm_password]):
+                    st.error("All fields are required")
+                elif password != confirm_password:
+                    st.error("Passwords don't match")
+                else:
+                    handle_signup(name, email, password)
 
-    .stTextInput > div > div > input:focus {
-        border-color: #667eea;
-        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-    }
+def show_main_app():
+    st.title("🕉️ Gita Guru")
 
-    .stButton > button {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        border: none;
-        border-radius: 12px;
-        padding: 12px 32px;
-        font-size: 16px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        width: 100%;
-        margin-top: 1rem;
-    }
-
-    .stButton > button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
-    }
-
-    .success-message {
-        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
-        color: white;
-        padding: 1rem;
-        border-radius: 12px;
-        text-align: center;
-        margin: 1rem 0;
-    }
-
-    .error-message {
-        background: linear-gradient(135deg, #dc3545 0%, #fd7e14 100%);
-        color: white;
-        padding: 1rem;
-        border-radius: 12px;
-        text-align: center;
-        margin: 1rem 0;
-    }
-
-    .info-message {
-        background: linear-gradient(135deg, #17a2b8 0%, #20c997 100%);
-        color: white;
-        padding: 1rem;
-        border-radius: 12px;
-        text-align: center;
-        margin: 1rem 0;
-    }
-</style>
-""", unsafe_allow_html=True)
-
-# Main header
-st.markdown("""
-<div class="main-header">
-    <div class="main-title">🕉️ Gita Guru</div>
-    <div class="subtitle">Divine Learning Platform</div>
-</div>
-""", unsafe_allow_html=True)
-
-# Initialize session state for tab management
-if "active_tab" not in st.session_state:
-    st.session_state.active_tab = "signin"
-
-# Auth container
-with st.container():
-    st.markdown('<div class="auth-container">', unsafe_allow_html=True)
-
-    # Tab buttons
-    col1, col2 = st.columns(2)
-
-    with col1:
-        if st.button("🔑 Sign In", use_container_width=True, 
-                     type="primary" if st.session_state.active_tab == "signin" else "secondary"):
-            st.session_state.active_tab = "signin"
+    # User info and logout in sidebar
+    with st.sidebar:
+        st.write(f"Welcome, {st.session_state.user_name}!")
+        if st.button("Logout"):
+            for key in ['user_id', 'user_name', 'user_email', 'logged_in']:
+                if key in st.session_state:
+                    del st.session_state[key]
             st.rerun()
 
-    with col2:
-        if st.button("✨ Sign Up", use_container_width=True,
-                     type="primary" if st.session_state.active_tab == "signup" else "secondary"):
-            st.session_state.active_tab = "signup"
-            st.rerun()
+    # Get chapters from database
+    chapters = db_manager.get_all_chapters()
+    if not chapters:
+        st.error("No chapters found in database")
+        return
 
-    st.markdown("---")
+    # Chapter selection
+    chapter_options = {f"Chapter {ch['chapter_number']}: {ch['chapter_name']}": ch for ch in chapters}
+    selected_chapter_display = st.selectbox("Select Chapter", list(chapter_options.keys()))
 
-    # SIGN IN TAB
-    if st.session_state.active_tab == "signin":
-        st.markdown("### Welcome Back! 🙏")
-        st.markdown("Sign in to continue your spiritual journey")
+    if selected_chapter_display:
+        selected_chapter = chapter_options[selected_chapter_display]
+        st.session_state.selected_chapter = selected_chapter
 
-        with st.form("signin_form", clear_on_submit=True):
-            email = st.text_input("📧 Email", placeholder="Enter your email address")
-            password = st.text_input("🔒 Password", type="password", placeholder="Enter your password")
-            signin_button = st.form_submit_button("🚀 Sign In", use_container_width=True)
+        # Get slokas for selected chapter
+        slokas = db_manager.get_slokas_by_chapter(selected_chapter['id'])
 
-        if signin_button:
-            if not email or not password:
-                st.markdown('<div class="error-message">❌ Please fill in all fields</div>', unsafe_allow_html=True)
-            else:
-                try:
-                    # Clear any existing sessions
-                    try:
-                        supabase.auth.sign_out()
-                    except:
-                        pass
+        if slokas:
+            sloka_options = {f"Sloka {sloka['sloka_number']}": sloka for sloka in slokas}
+            selected_sloka_display = st.selectbox("Select Sloka", list(sloka_options.keys()))
 
-                    # Attempt authentication
-                    response = supabase.auth.sign_in_with_password({
-                        "email": email,
-                        "password": password
-                    })
+            if selected_sloka_display:
+                selected_sloka = sloka_options[selected_sloka_display]
+                st.session_state.selected_sloka = selected_sloka
 
-                    if response and response.user:
-                        user_id = response.user.id
-                        user_email = response.user.email
+                # Display sloka content with improved layout
+                st.markdown("---")
 
-                        # Get or create user profile
-                        user_profile = db_manager.get_user_by_id(user_id)
+                # Reference Audio at the top
+                st.subheader("📻 Reference Audio")
+                if selected_sloka.get('reference_audio_url'):
+                    st.audio(selected_sloka['reference_audio_url'], format='audio/mp3')
+                else:
+                    st.info("No reference audio available for this sloka")
 
-                        if not user_profile:
-                            # Create user profile if it doesn't exist
-                            user_name = user_email.split('@')[0].title()  # Use email prefix as name
-                            user_profile = db_manager.create_user_if_not_exists(
-                                user_id=user_id,
-                                name=user_name,
-                                email=user_email
-                            )
+                st.markdown("---")
 
-                        if user_profile:
-                            # Success! Store user in session and redirect
-                            st.session_state["user"] = {
-                                "id": user_profile["id"],
-                                "email": user_profile["email"],
-                                "name": user_profile["name"]
-                            }
-                            st.markdown('<div class="success-message">✅ Welcome back! Redirecting...</div>', unsafe_allow_html=True)
-                            st.switch_page("pages/user_portal.py")
-                        else:
-                            st.markdown('<div class="error-message">❌ Failed to load user profile</div>', unsafe_allow_html=True)
-                    else:
-                        st.markdown('<div class="error-message">❌ Authentication failed</div>', unsafe_allow_html=True)
+                # Sloka Text
+                st.subheader("📜 Sloka Text")
+                st.markdown(f"**Telugu:** {selected_sloka['sloka_text_telugu']}")
 
-                except Exception as e:
-                    error_message = str(e).lower()
-                    if "invalid" in error_message or "credential" in error_message:
-                        st.markdown('<div class="error-message">❌ Invalid email or password. Please check your credentials.</div>', unsafe_allow_html=True)
-                        st.markdown('<div class="info-message">💡 Don\'t have an account? Click "Sign Up" above to create one.</div>', unsafe_allow_html=True)
-                    else:
-                        st.markdown(f'<div class="error-message">❌ Sign in error: {str(e)}</div>', unsafe_allow_html=True)
+                st.markdown("---")
 
-    # SIGN UP TAB
+                # Meanings
+                st.subheader("💭 Meanings")
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    st.markdown("**Telugu Meaning:**")
+                    st.write(selected_sloka['meaning_telugu'])
+
+                with col2:
+                    st.markdown("**English Meaning:**")
+                    st.write(selected_sloka['meaning_english'])
+
+                st.markdown("---")
+
+                # Audio Upload Section
+                st.subheader("🎤 Upload Your Audio")
+
+                upload_tab1, upload_tab2 = st.tabs(["Recitation Audio", "Explanation Audio"])
+
+                with upload_tab1:
+                    st.write("Upload your recitation of this sloka")
+                    recitation_file = st.file_uploader(
+                        "Choose recitation audio file", 
+                        type=['mp3', 'wav', 'ogg'],
+                        key="recitation_upload"
+                    )
+
+                    if recitation_file is not None:
+                        if st.button("Upload Recitation", key="upload_recitation"):
+                            with st.spinner("Uploading recitation..."):
+                                try:
+                                    # Convert file to bytes
+                                    audio_bytes = recitation_file.read()
+
+                                    # Use the upload_audio function from audio.py
+                                    response = upload_audio(
+                                        audio_bytes,
+                                        f"recitation_{st.session_state.user_id}_{selected_sloka['id']}.mp3",
+                                        st.session_state.user_id,
+                                        selected_sloka['id'],
+                                        "recitation"
+                                    )
+
+                                    if response.get('success'):
+                                        st.success("Recitation uploaded successfully!")
+                                    else:
+                                        st.error(f"Upload failed: {response.get('message', 'Unknown error')}")
+
+                                except Exception as e:
+                                    st.error(f"Upload error: {str(e)}")
+
+                with upload_tab2:
+                    st.write("Upload your explanation of this sloka")
+                    explanation_file = st.file_uploader(
+                        "Choose explanation audio file", 
+                        type=['mp3', 'wav', 'ogg'],
+                        key="explanation_upload"
+                    )
+
+                    if explanation_file is not None:
+                        if st.button("Upload Explanation", key="upload_explanation"):
+                            with st.spinner("Uploading explanation..."):
+                                try:
+                                    # Convert file to bytes
+                                    audio_bytes = explanation_file.read()
+
+                                    # Use the upload_audio function from audio.py
+                                    response = upload_audio(
+                                        audio_bytes,
+                                        f"explanation_{st.session_state.user_id}_{selected_sloka['id']}.mp3",
+                                        st.session_state.user_id,
+                                        selected_sloka['id'],
+                                        "explanation"
+                                    )
+
+                                    if response.get('success'):
+                                        st.success("Explanation uploaded successfully!")
+                                    else:
+                                        st.error(f"Upload failed: {response.get('message', 'Unknown error')}")
+
+                                except Exception as e:
+                                    st.error(f"Upload error: {str(e)}")
+
+def main():
+    st.set_page_config(
+        page_title="Gita Guru",
+        page_icon="🕉️",
+        layout="wide"
+    )
+
+    init_session_state()
+
+    if st.session_state.logged_in:
+        show_main_app()
     else:
-        st.markdown("### Join the Journey! 🌟")
-        st.markdown("Create your account to begin learning")
+        show_auth_forms()
 
-        with st.form("signup_form", clear_on_submit=True):
-            name = st.text_input("👤 Full Name", placeholder="Enter your full name")
-            email = st.text_input("📧 Email", placeholder="Enter your email address")
-            password = st.text_input("🔒 Password", type="password", placeholder="Create a password (min 6 characters)")
-            confirm_password = st.text_input("🔒 Confirm Password", type="password", placeholder="Confirm your password")
-            signup_button = st.form_submit_button("🎯 Create Account", use_container_width=True)
-
-        if signup_button:
-            if not all([name, email, password, confirm_password]):
-                st.markdown('<div class="error-message">❌ Please fill in all fields</div>', unsafe_allow_html=True)
-            elif password != confirm_password:
-                st.markdown('<div class="error-message">❌ Passwords do not match</div>', unsafe_allow_html=True)
-            elif len(password) < 6:
-                st.markdown('<div class="error-message">❌ Password must be at least 6 characters long</div>', unsafe_allow_html=True)
-            else:
-                try:
-                    # Create user account
-                    response = supabase.auth.sign_up({
-                        "email": email,
-                        "password": password
-                    })
-
-                    if response and response.user:
-                        user_id = response.user.id
-
-                        # Create user profile immediately
-                        user_profile = db_manager.create_user_if_not_exists(
-                            user_id=user_id,
-                            name=name,
-                            email=email
-                        )
-
-                        if user_profile:
-                            # Success! Store user in session and redirect
-                            st.session_state["user"] = {
-                                "id": user_profile["id"],
-                                "email": user_profile["email"],
-                                "name": user_profile["name"]
-                            }
-                            st.markdown('<div class="success-message">✅ Account created successfully! Welcome to Gita Guru!</div>', unsafe_allow_html=True)
-                            st.switch_page("pages/user_portal.py")
-                        else:
-                            st.markdown('<div class="error-message">❌ Failed to create user profile</div>', unsafe_allow_html=True)
-                    else:
-                        st.markdown('<div class="error-message">❌ Account creation failed</div>', unsafe_allow_html=True)
-
-                except Exception as e:
-                    error_message = str(e).lower()
-                    if "already registered" in error_message or "email" in error_message and "exists" in error_message:
-                        st.markdown('<div class="error-message">❌ This email is already registered. Please sign in instead.</div>', unsafe_allow_html=True)
-                        st.markdown('<div class="info-message">💡 Already have an account? Click "Sign In" above.</div>', unsafe_allow_html=True)
-                    else:
-                        st.markdown(f'<div class="error-message">❌ Sign up error: {str(e)}</div>', unsafe_allow_html=True)
-
-    st.markdown('</div>', unsafe_allow_html=True)
-
-# Features section
-st.markdown("---")
-st.markdown("""
-<div style="display: flex; justify-content: space-around; margin-top: 3rem; text-align: center; color: white;">
-    <div style="opacity: 0.8;">
-        <div style="font-size: 2rem; margin-bottom: 0.5rem;">📚</div>
-        <div style="font-weight: 600;">Sacred Texts</div>
-        <div style="font-size: 0.9rem; opacity: 0.7;">Learn from ancient wisdom</div>
-    </div>
-    <div style="opacity: 0.8;">
-        <div style="font-size: 2rem; margin-bottom: 0.5rem;">🎤</div>
-        <div style="font-weight: 600;">Audio Learning</div>
-        <div style="font-size: 0.9rem; opacity: 0.7;">Listen and practice</div>
-    </div>
-    <div style="opacity: 0.8;">
-        <div style="font-size: 2rem; margin-bottom: 0.5rem;">🌟</div>
-        <div style="font-weight: 600;">Spiritual Growth</div>
-        <div style="font-size: 0.9rem; opacity: 0.7;">Transform your life</div>
-    </div>
-</div>
-""", unsafe_allow_html=True)
+if __name__ == "__main__":
+    main()
