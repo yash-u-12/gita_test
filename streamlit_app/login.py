@@ -1,12 +1,10 @@
+
 import streamlit as st
-import requests
-import json
 import os
 from supabase import create_client
 from config import SUPABASE_URL, SUPABASE_KEY
 from database.db_utils import get_db_manager
-from apis import signup_user, signin_user
-from audio import upload_audio
+from api_client import api_client
 
 # Initialize Supabase client for reference audio only
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -17,6 +15,8 @@ def init_session_state():
         st.session_state.user_id = None
     if 'user_name' not in st.session_state:
         st.session_state.user_name = None
+    if 'user_phone' not in st.session_state:
+        st.session_state.user_phone = None
     if 'user_email' not in st.session_state:
         st.session_state.user_email = None
     if 'logged_in' not in st.session_state:
@@ -25,34 +25,57 @@ def init_session_state():
         st.session_state.selected_chapter = None
     if 'selected_sloka' not in st.session_state:
         st.session_state.selected_sloka = None
+    if 'signup_step' not in st.session_state:
+        st.session_state.signup_step = 'phone'
+    if 'signup_phone' not in st.session_state:
+        st.session_state.signup_phone = None
 
-def handle_signup(name, email, password):
+def handle_send_otp(phone_number):
     try:
-        response = signup_user(name, email, password)
+        response = api_client.send_signup_otp(phone_number)
         if response.get('success'):
-            st.success("Account created successfully! Please sign in.")
+            st.session_state.signup_phone = phone_number
+            st.session_state.signup_step = 'verify'
+            st.success("OTP sent successfully! Please check your phone.")
+            st.rerun()
             return True
         else:
-            st.error(f"Signup failed: {response.get('message', 'Unknown error')}")
+            st.error(f"Failed to send OTP: {response.get('data', {}).get('message', 'Unknown error')}")
+            return False
+    except Exception as e:
+        st.error(f"Error sending OTP: {str(e)}")
+        return False
+
+def handle_verify_signup(phone_number, otp_code, name, email, password):
+    try:
+        response = api_client.verify_signup_otp(phone_number, otp_code, name, email, password, True)
+        if response.get('success'):
+            st.success("Account created successfully! Please sign in.")
+            st.session_state.signup_step = 'phone'
+            st.session_state.signup_phone = None
+            return True
+        else:
+            st.error(f"Signup verification failed: {response.get('data', {}).get('message', 'Invalid OTP or details')}")
             return False
     except Exception as e:
         st.error(f"Signup error: {str(e)}")
         return False
 
-def handle_signin(email, password):
+def handle_signin(phone, password):
     try:
-        response = signin_user(email, password)
+        response = api_client.login(phone, password)
         if response.get('success'):
-            user_data = response.get('user', {})
+            user_data = response.get('data', {}).get('user', {})
             st.session_state.user_id = user_data.get('id')
             st.session_state.user_name = user_data.get('name')
-            st.session_state.user_email = user_data.get('email')
+            st.session_state.user_phone = user_data.get('phone')
+            st.session_state.user_email = user_data.get('email', '')
             st.session_state.logged_in = True
             st.success("Signed in successfully!")
             st.rerun()
             return True
         else:
-            st.error(f"Sign in failed: {response.get('message', 'Invalid credentials')}")
+            st.error(f"Sign in failed: {response.get('data', {}).get('message', 'Invalid credentials')}")
             return False
     except Exception as e:
         st.error(f"Sign in error: {str(e)}")
@@ -67,29 +90,49 @@ def show_auth_forms():
     with tab1:
         st.subheader("Sign In")
         with st.form("signin_form"):
-            email = st.text_input("Email")
+            phone = st.text_input("Phone Number", placeholder="Enter your phone number")
             password = st.text_input("Password", type="password")
             submit = st.form_submit_button("Sign In")
 
-            if submit and email and password:
-                handle_signin(email, password)
+            if submit and phone and password:
+                handle_signin(phone, password)
 
     with tab2:
         st.subheader("Create Account")
-        with st.form("signup_form"):
-            name = st.text_input("Full Name")
-            email = st.text_input("Email")
-            password = st.text_input("Password", type="password")
-            confirm_password = st.text_input("Confirm Password", type="password")
-            submit = st.form_submit_button("Sign Up")
+        
+        if st.session_state.signup_step == 'phone':
+            with st.form("send_otp_form"):
+                phone_number = st.text_input("Phone Number", placeholder="Enter your phone number")
+                submit = st.form_submit_button("Send OTP")
+                
+                if submit and phone_number:
+                    handle_send_otp(phone_number)
+        
+        elif st.session_state.signup_step == 'verify':
+            st.info(f"OTP sent to {st.session_state.signup_phone}")
+            with st.form("verify_otp_form"):
+                otp_code = st.text_input("Enter OTP", placeholder="6-digit OTP")
+                name = st.text_input("Full Name")
+                email = st.text_input("Email (optional)")
+                password = st.text_input("Password", type="password")
+                confirm_password = st.text_input("Confirm Password", type="password")
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    submit = st.form_submit_button("Create Account")
+                with col2:
+                    if st.form_submit_button("← Back"):
+                        st.session_state.signup_step = 'phone'
+                        st.session_state.signup_phone = None
+                        st.rerun()
 
-            if submit:
-                if not all([name, email, password, confirm_password]):
-                    st.error("All fields are required")
-                elif password != confirm_password:
-                    st.error("Passwords don't match")
-                else:
-                    handle_signup(name, email, password)
+                if submit:
+                    if not all([otp_code, name, password, confirm_password]):
+                        st.error("OTP, name, and passwords are required")
+                    elif password != confirm_password:
+                        st.error("Passwords don't match")
+                    else:
+                        handle_verify_signup(st.session_state.signup_phone, otp_code, name, email or "", password)
 
 def show_main_app():
     st.title("🕉️ Gita Guru")
@@ -97,8 +140,30 @@ def show_main_app():
     # User info and logout in sidebar
     with st.sidebar:
         st.write(f"Welcome, {st.session_state.user_name}!")
+        st.write(f"Phone: {st.session_state.user_phone}")
+        if st.session_state.user_email:
+            st.write(f"Email: {st.session_state.user_email}")
+        
+        st.markdown("---")
+        
+        # User contributions section
+        if st.button("View My Contributions"):
+            try:
+                contributions = api_client.get_user_contributions(st.session_state.user_id)
+                if contributions.get('success'):
+                    contrib_data = contributions.get('data', {})
+                    st.write("📊 Your Contributions:")
+                    st.json(contrib_data)
+                else:
+                    st.error("Failed to load contributions")
+            except Exception as e:
+                st.error(f"Error loading contributions: {str(e)}")
+        
         if st.button("Logout"):
-            for key in ['user_id', 'user_name', 'user_email', 'logged_in']:
+            # Clear session and API client
+            api_client.auth_token = None
+            api_client.user_data = None
+            for key in ['user_id', 'user_name', 'user_phone', 'user_email', 'logged_in']:
                 if key in st.session_state:
                     del st.session_state[key]
             st.rerun()
@@ -160,7 +225,7 @@ def show_main_app():
 
                 st.markdown("---")
 
-                # Audio Upload Section
+                # Audio Upload Section using Swecha API
                 st.subheader("🎤 Upload Your Audio")
 
                 upload_tab1, upload_tab2 = st.tabs(["Recitation Audio", "Explanation Audio"])
@@ -175,24 +240,31 @@ def show_main_app():
 
                     if recitation_file is not None:
                         if st.button("Upload Recitation", key="upload_recitation"):
-                            with st.spinner("Uploading recitation..."):
+                            with st.spinner("Uploading recitation to Swecha Corpus..."):
                                 try:
-                                    # Convert file to bytes
-                                    audio_bytes = recitation_file.read()
-
-                                    # Use the upload_audio function from audio.py
-                                    response = upload_audio(
-                                        audio_bytes,
-                                        f"recitation_{st.session_state.user_id}_{selected_sloka['id']}.mp3",
-                                        st.session_state.user_id,
-                                        selected_sloka['id'],
-                                        "recitation"
+                                    # Read file data
+                                    audio_data = recitation_file.read()
+                                    filename = f"recitation_{st.session_state.user_id}_{selected_sloka['id']}_{recitation_file.name}"
+                                    title = f"Sloka {selected_sloka['sloka_number']} Recitation - Chapter {selected_chapter['chapter_number']}"
+                                    
+                                    # Upload using API client
+                                    response = api_client.upload_complete_audio(
+                                        audio_data=audio_data,
+                                        filename=filename,
+                                        title=title,
+                                        category_id="1",  # You may want to make this configurable
+                                        language="te",    # Telugu
+                                        release_rights="open",
+                                        description=f"User recitation for {title}"
                                     )
 
                                     if response.get('success'):
-                                        st.success("Recitation uploaded successfully!")
+                                        st.success("Recitation uploaded successfully to Swecha Corpus!")
+                                        upload_data = response.get('data', {})
+                                        if upload_data.get('id'):
+                                            st.info(f"Upload ID: {upload_data['id']}")
                                     else:
-                                        st.error(f"Upload failed: {response.get('message', 'Unknown error')}")
+                                        st.error(f"Upload failed: {response.get('data', {}).get('message', 'Unknown error')}")
 
                                 except Exception as e:
                                     st.error(f"Upload error: {str(e)}")
@@ -207,24 +279,31 @@ def show_main_app():
 
                     if explanation_file is not None:
                         if st.button("Upload Explanation", key="upload_explanation"):
-                            with st.spinner("Uploading explanation..."):
+                            with st.spinner("Uploading explanation to Swecha Corpus..."):
                                 try:
-                                    # Convert file to bytes
-                                    audio_bytes = explanation_file.read()
-
-                                    # Use the upload_audio function from audio.py
-                                    response = upload_audio(
-                                        audio_bytes,
-                                        f"explanation_{st.session_state.user_id}_{selected_sloka['id']}.mp3",
-                                        st.session_state.user_id,
-                                        selected_sloka['id'],
-                                        "explanation"
+                                    # Read file data
+                                    audio_data = explanation_file.read()
+                                    filename = f"explanation_{st.session_state.user_id}_{selected_sloka['id']}_{explanation_file.name}"
+                                    title = f"Sloka {selected_sloka['sloka_number']} Explanation - Chapter {selected_chapter['chapter_number']}"
+                                    
+                                    # Upload using API client
+                                    response = api_client.upload_complete_audio(
+                                        audio_data=audio_data,
+                                        filename=filename,
+                                        title=title,
+                                        category_id="1",  # You may want to make this configurable
+                                        language="te",    # Telugu
+                                        release_rights="open",
+                                        description=f"User explanation for {title}"
                                     )
 
                                     if response.get('success'):
-                                        st.success("Explanation uploaded successfully!")
+                                        st.success("Explanation uploaded successfully to Swecha Corpus!")
+                                        upload_data = response.get('data', {})
+                                        if upload_data.get('id'):
+                                            st.info(f"Upload ID: {upload_data['id']}")
                                     else:
-                                        st.error(f"Upload failed: {response.get('message', 'Unknown error')}")
+                                        st.error(f"Upload failed: {response.get('data', {}).get('message', 'Unknown error')}")
 
                                 except Exception as e:
                                     st.error(f"Upload error: {str(e)}")
