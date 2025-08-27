@@ -1,5 +1,12 @@
 import streamlit as st
 import os
+import sys
+
+# Add the project root to Python path
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
 from supabase import create_client
 from config import SUPABASE_URL, SUPABASE_KEY
 from database.db_utils import get_db_manager
