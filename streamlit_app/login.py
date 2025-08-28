@@ -7,13 +7,9 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from supabase import create_client
-from config import SUPABASE_URL, SUPABASE_KEY
 from database.db_utils import get_db_manager
 from api_client import api_client, get_api_client
 
-# Initialize Supabase client for reference audio only
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 db_manager = get_db_manager()
 
 def init_session_state():
@@ -35,6 +31,10 @@ def init_session_state():
         st.session_state.signup_step = 'phone'
     if 'signup_phone' not in st.session_state:
         st.session_state.signup_phone = None
+    if 'login_otp_step' not in st.session_state:
+        st.session_state.login_otp_step = 'phone'
+    if 'login_otp_phone' not in st.session_state:
+        st.session_state.login_otp_phone = None
 
 def handle_send_otp(phone_number):
     try:
@@ -46,21 +46,24 @@ def handle_send_otp(phone_number):
             st.rerun()
             return True
         else:
-            # Better error handling with more details
             error_data = response.get('data', {})
             status_code = response.get('status_code', 'Unknown')
-            
-            if isinstance(error_data, dict):
-                error_message = error_data.get('message', error_data.get('error', 'Unknown error'))
+            if status_code == 500 or error_data.get('detail') == "Internal server error":
+                st.error("⚠️ Internal server error from backend. Please try again later or contact support.")
+                with st.expander("Debug Information"):
+                    st.json(response)
             else:
-                error_message = str(error_data)
-            
-            st.error(f"Failed to send OTP (Status: {status_code}): {error_message}")
-            
-            # Show debug info in expander for troubleshooting
-            with st.expander("Debug Information"):
-                st.json(response)
-            
+                if isinstance(error_data, dict):
+                    error_message = error_data.get('message', error_data.get('error', 'Unknown error'))
+                else:
+                    error_message = str(error_data)
+                
+                st.error(f"Failed to send OTP (Status: {status_code}): {error_message}")
+                
+                # Show debug info in expander for troubleshooting
+                with st.expander("Debug Information"):
+                    st.json(response)
+                
             return False
     except Exception as e:
         st.error(f"Error sending OTP: {str(e)}")
@@ -75,7 +78,17 @@ def handle_verify_signup(phone_number, otp_code, name, email, password):
             st.session_state.signup_phone = None
             return True
         else:
-            st.error(f"Signup verification failed: {response.get('data', {}).get('message', 'Invalid OTP or details')}")
+            error_msg = response.get('data', {}).get('message', 'Invalid OTP or details')
+            status_code = response.get('status_code', 'Unknown')
+            error_data = response.get('data', {})
+            if status_code == 500 or error_data.get('detail') == "Internal server error":
+                st.error("⚠️ Internal server error from backend. Please try again later or contact support.")
+                with st.expander("Signup Debug Info"):
+                    st.json(response)
+            else:
+                st.error(f"Signup verification failed: {error_msg}")
+                with st.expander("Signup Debug Info"):
+                    st.json(response)
             return False
     except Exception as e:
         st.error(f"Signup error: {str(e)}")
@@ -109,13 +122,62 @@ def show_auth_forms():
 
     with tab1:
         st.subheader("Sign In")
-        with st.form("signin_form"):
-            phone = st.text_input("Phone Number", placeholder="Enter your phone number")
-            password = st.text_input("Password", type="password")
-            submit = st.form_submit_button("Sign In")
-
-            if submit and phone and password:
-                handle_signin(phone, password)
+        login_mode = st.radio("Choose login method:", ["Password", "OTP"], horizontal=True)
+        if login_mode == "Password":
+            with st.form("signin_form"):
+                phone = st.text_input("Phone Number", placeholder="Enter your phone number")
+                password = st.text_input("Password", type="password")
+                submit = st.form_submit_button("Sign In")
+                if submit and phone and password:
+                    handle_signin(phone, password)
+        else:
+            if st.session_state.login_otp_step == 'phone':
+                with st.form("send_login_otp_form"):
+                    phone_number = st.text_input("Phone Number", placeholder="Enter your phone number (e.g., +91XXXXXXXXXX)")
+                    submit = st.form_submit_button("Send OTP")
+                    if submit and phone_number:
+                        phone_cleaned = phone_number.strip()
+                        if not phone_cleaned:
+                            st.error("Please enter a phone number")
+                        elif len(phone_cleaned) < 10:
+                            st.error("Phone number seems too short")
+                        else:
+                            response = api_client.send_login_otp(phone_cleaned)
+                            if response.get('success'):
+                                st.session_state.login_otp_phone = phone_cleaned
+                                st.session_state.login_otp_step = 'verify'
+                                st.success("OTP sent successfully! Please check your phone.")
+                                st.rerun()
+                            else:
+                                st.error(f"Failed to send OTP: {response.get('data', {}).get('message', 'Unknown error')}")
+            elif st.session_state.login_otp_step == 'verify':
+                st.info(f"OTP sent to {st.session_state.login_otp_phone}")
+                with st.form("verify_login_otp_form"):
+                    otp_code = st.text_input("Enter OTP", placeholder="6-digit OTP")
+                    submit = st.form_submit_button("Verify & Login")
+                    col1, col2 = st.columns(2)
+                    with col2:
+                        if st.form_submit_button("← Back"):
+                            st.session_state.login_otp_step = 'phone'
+                            st.session_state.login_otp_phone = None
+                            st.rerun()
+                    if submit and otp_code:
+                        response = api_client.verify_login_otp(
+                            st.session_state.login_otp_phone, otp_code, True
+                        )
+                        if response.get('success'):
+                            user_data = response.get('data', {}).get('user', {})
+                            st.session_state.user_id = user_data.get('id')
+                            st.session_state.user_name = user_data.get('name')
+                            st.session_state.user_phone = user_data.get('phone')
+                            st.session_state.user_email = user_data.get('email', '')
+                            st.session_state.logged_in = True
+                            st.success("Signed in successfully!")
+                            st.session_state.login_otp_step = 'phone'
+                            st.session_state.login_otp_phone = None
+                            st.rerun()
+                        else:
+                            st.error(f"OTP login failed: {response.get('data', {}).get('message', 'Invalid OTP')}")
 
     with tab2:
         st.subheader("Create Account")
@@ -131,7 +193,7 @@ def show_auth_forms():
                     if not phone_cleaned:
                         st.error("Please enter a phone number")
                     elif len(phone_cleaned) < 10:
-                        st.error("Phone number seems too short")
+                        st.error("Phone number seems to short")
                     else:
                         handle_send_otp(phone_cleaned)
 
@@ -166,28 +228,46 @@ def show_main_app():
 
     # User info and logout in sidebar
     with st.sidebar:
-        st.write(f"Welcome, {st.session_state.user_name}!")
-        st.write(f"Phone: {st.session_state.user_phone}")
-        if st.session_state.user_email:
-            st.write(f"Email: {st.session_state.user_email}")
+        # Fetch user info (uses auth token in api_client)
+        user_info = api_client.get_user_info()
+        user_name = "User"
+        user_phone = ""
+        user_email = ""
+
+        if user_info.get("success"):
+            user_data = user_info.get("data", {})
+            user_name = user_data.get("name", "User")
+            user_phone = user_data.get("phone", "")
+            user_email = user_data.get("email", "")
+
+        # Display only name by default
+        st.write(f"Welcome, {user_name}!")
+
+        # Show Profile button - when clicked show details
+        if st.button("Show Profile"):
+            st.markdown("---")
+            if user_info.get("success"):
+                st.write(f"**Phone:** {user_phone if user_phone else 'N/A'}")
+                st.write(f"**Email:** {user_email if user_email else 'N/A'}")
+            else:
+                st.write("User details not available.")
+
+            # Fetch and show audio contributions
+            uid = st.session_state.get('user_id')
+            if uid:
+                contrib = api_client.get_user_contributions(uid)
+                if contrib.get("success"):
+                    audio_count = contrib.get("data", {}).get("contributions_by_media_type", {}).get("audio", 0)
+                    st.write(f"🎤 Audio contributions: {audio_count}")
+                else:
+                    st.write("Could not fetch contributions.")
+            else:
+                st.write("No user id available.")
 
         st.markdown("---")
 
-        # User contributions section
-        if st.button("View My Contributions"):
-            try:
-                contributions = api_client.get_user_contributions(st.session_state.user_id)
-                if contributions.get('success'):
-                    contrib_data = contributions.get('data', {})
-                    st.write("📊 Your Contributions:")
-                    st.json(contrib_data)
-                else:
-                    st.error("Failed to load contributions")
-            except Exception as e:
-                st.error(f"Error loading contributions: {str(e)}")
-
+        # Logout button
         if st.button("Logout"):
-            # Clear session and API client
             api_client.auth_token = None
             api_client.user_data = None
             for key in ['user_id', 'user_name', 'user_phone', 'user_email', 'logged_in']:
@@ -234,7 +314,7 @@ def show_main_app():
 
                 # Sloka Text
                 st.subheader("📜 Sloka Text")
-                st.markdown(f"**Telugu:** {selected_sloka['sloka_text_telugu']}")
+                st.markdown(f"**Telugu:** {selected_sloka.get('sloka_text_telugu', 'N/A')}")
 
                 st.markdown("---")
 
@@ -244,11 +324,11 @@ def show_main_app():
 
                 with col1:
                     st.markdown("**Telugu Meaning:**")
-                    st.write(selected_sloka['meaning_telugu'])
+                    st.write(selected_sloka.get('meaning_telugu', 'N/A'))
 
                 with col2:
                     st.markdown("**English Meaning:**")
-                    st.write(selected_sloka['meaning_english'])
+                    st.write(selected_sloka.get('meaning_english', 'N/A'))
 
                 st.markdown("---")
 
