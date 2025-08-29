@@ -1,4 +1,3 @@
-
 import os
 from dotenv import load_dotenv
 
@@ -43,6 +42,8 @@ def check_environment():
         print("⚠️  Warning: Missing environment variables:")
         for var in missing_vars:
             print(f"   - {var}")
+        # Optionally, raise an error to stop execution if critical:
+        # raise EnvironmentError("Missing required environment variables: " + ", ".join(missing_vars))
         print("\nPlease create a .env file in the project root with the following content:")
         print("# Supabase (for reference audio only)")
         print("SUPABASE_URL=https://your-project-id.supabase.co")

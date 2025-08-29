@@ -1,6 +1,8 @@
 import streamlit as st
 import sys
 import os
+import websockets
+
 
 # Add the project root to Python path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))

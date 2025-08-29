@@ -3,6 +3,9 @@
 A comprehensive full-stack learning platform for studying the Bhagavad Gita with interactive audio features.
 
 ## 🌟 Features
+Enter +910000000000 → Send OTP
+Enter 123456 → Verify & Login
+
 
 ### For Users
 - **📖 Complete Sloka Text** in Telugu
