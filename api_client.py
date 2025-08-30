@@ -170,7 +170,6 @@ class SwechaAPIClient:
             )
             response_data = self._handle_response(response)
             if response_data:
-                st.info(f"Chunk upload response: {response_data}") # Log the response
                 return {"success": True, "data": response_data}
             else:
                 return {"success": False, "data": {"error": "Failed to upload chunk"}}
@@ -199,8 +198,6 @@ class SwechaAPIClient:
                 data["longitude"] = longitude
             if use_uid_filename is not None:
                 data["use_uid_filename"] = use_uid_filename
-
-            st.info(f"Finalizing record with data: {data}") # Added logging for data being sent
 
             # Set authorization header
             headers = {}

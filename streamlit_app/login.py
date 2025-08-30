@@ -347,38 +347,75 @@ def show_main_app():
             if not st.session_state.get("user_id"):
                 st.session_state.user_id = user_data.get("id")
 
-        # Display only name by default
-        st.write(f"Welcome, {user_name}!")
+        # Professional profile section
+        st.markdown("""
+        <div style="background: rgba(255, 255, 255, 0.1); padding: 1.5rem; border-radius: 15px; margin-bottom: 1rem; backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.2);">
+            <div style="text-align: center; margin-bottom: 1rem;">
+                <div style="width: 60px; height: 60px; background: linear-gradient(45deg, #667eea, #764ba2); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 0.5rem auto; font-size: 1.5rem; color: white; font-weight: bold;">
+                    {user_initial}
+                </div>
+                <h3 style="color: white; margin: 0; font-size: 1.2rem;">{user_name}</h3>
+                <p style="color: rgba(255, 255, 255, 0.8); margin: 0.2rem 0; font-size: 0.9rem;">Welcome back!</p>
+            </div>
+        </div>
+        """.format(
+            user_initial=user_name[0].upper() if user_name else "U",
+            user_name=user_name
+        ), unsafe_allow_html=True)
 
-        # Show Profile button - when clicked show details
-        if st.button("Show Profile"):
-            st.markdown("---")
+        # User details expander
+        with st.expander("👤 Profile Details", expanded=False):
             if user_info.get("success"):
-                st.write(f"**Phone:** {user_phone if user_phone else 'N/A'}")
-                st.write(f"**Email:** {user_email if user_email else 'N/A'}")
-            else:
-                st.write("User details not available.")
-
-            # Fetch and show audio contributions
-            uid = (
-                st.session_state.user_id
-                or user_data.get("id")
-                or (getattr(api_client, "user_data", {}) or {}).get("id")
-            )
-            if uid:
-                contrib = api_client.get_user_contributions(uid)
-                if contrib.get("success"):
-                    audio_count = contrib.get("data", {}).get("contributions_by_media_type", {}).get("audio", 0)
-                    st.write(f"🎤 Audio contributions: {audio_count}")
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.markdown("**📱 Phone:**")
+                    st.write(user_phone if user_phone else "Not provided")
+                with col2:
+                    st.markdown("**📧 Email:**")
+                    st.write(user_email if user_email else "Not provided")
+                
+                # Fetch and show audio contributions
+                uid = (
+                    st.session_state.user_id
+                    or user_data.get("id")
+                    or (getattr(api_client, "user_data", {}) or {}).get("id")
+                )
+                if uid:
+                    contrib = api_client.get_user_contributions(uid)
+                    if contrib.get("success"):
+                        audio_count = contrib.get("data", {}).get("contributions_by_media_type", {}).get("audio", 0)
+                        st.markdown("---")
+                        st.markdown(f"**🎤 Audio Contributions:** {audio_count}")
+                        if audio_count > 0:
+                            st.success(f"You've contributed {audio_count} audio recordings!")
+                        else:
+                            st.info("Start contributing by uploading your first audio!")
+                    else:
+                        st.warning("Could not fetch contributions.")
                 else:
-                    st.write("Could not fetch contributions.")
+                    st.warning("No user ID available.")
             else:
-                st.write("No user id available.")
+                st.error("User details not available.")
+
+        # Recent uploads section
+        if st.session_state.get('last_recitation_upload') or st.session_state.get('last_explanation_upload'):
+            st.markdown("---")
+            st.markdown("**📤 Recent Uploads**")
+            
+            if st.session_state.get('last_recitation_upload'):
+                upload_info = st.session_state['last_recitation_upload']
+                st.markdown(f"🎤 **Recitation:** {upload_info.get('title', 'Untitled')}")
+                st.caption(f"Category: {upload_info.get('category', 'Unknown')}")
+            
+            if st.session_state.get('last_explanation_upload'):
+                upload_info = st.session_state['last_explanation_upload']
+                st.markdown(f"💭 **Explanation:** {upload_info.get('title', 'Untitled')}")
+                st.caption(f"Category: {upload_info.get('category', 'Unknown')}")
 
         st.markdown("---")
 
-        # Logout button
-        if st.button("Logout"):
+        # Logout button with better styling
+        if st.button("🚪 Logout", use_container_width=True):
             api_client.auth_token = None
             api_client.user_data = None
             for key in ['user_id', 'user_name', 'user_phone', 'user_email', 'logged_in']:
@@ -445,34 +482,10 @@ def show_main_app():
                 st.markdown("---")
 
                 # Audio Upload Section using Swecha API
-                st.subheader("🎤 Upload Your Audio")
-                # Recorder detection status (for troubleshooting)
-                recorder_label = _RECORDER_IMPL or "none"
-                st.caption(f"Recorder backend: {recorder_label}")
-
-                with st.expander("Recording diagnostics", expanded=False):
-                    try:
-                        import sys as _sys
-                        st.write({
-                            "python": _sys.version.split(" ")[0],
-                            "executable": _sys.executable,
-                            "recorder_impl": recorder_label,
-                            "auth_token_set": bool(api_client.auth_token),
-                        })
-                        try:
-                            import importlib
-                            m0 = importlib.util.find_spec("audio_recorder_streamlit") is not None
-                            m1 = importlib.util.find_spec("streamlit_mic_recorder") is not None
-                            m2 = importlib.util.find_spec("audiorecorder") is not None
-                            st.write({
-                                "audio_recorder_streamlit_installed": m0,
-                                "streamlit_mic_recorder_installed": m1,
-                                "audiorecorder_installed": m2,
-                            })
-                        except Exception as _:
-                            pass
-                    except Exception as _:
-                        pass
+                st.markdown("""
+                <div class="upload-section">
+                    <h3 style="color: white; margin-bottom: 1rem;">🎤 Upload Your Audio</h3>
+                """, unsafe_allow_html=True)
 
                 # Fetch categories for dropdown
                 categories_response = api_client.get_categories()
@@ -480,42 +493,39 @@ def show_main_app():
                 if categories_response.get('success'):
                     category_options = categories_response.get('data', [])
                 else:
-                    st.warning("Could not fetch categories. Using default category.")
-                    # Fallback to a default category
+                    # Fallback to a default category without showing warning
                     category_options = [{"id": "ab9fa2ce-1f83-4e91-b89d-cca18e8b301e", "name": "Bhagavad Gita"}]
 
-                upload_tab1, upload_tab2 = st.tabs(["Recitation Audio", "Explanation Audio"])
+                upload_tab1, upload_tab2 = st.tabs(["🎤 Recitation Audio", "💭 Explanation Audio"])
 
                 with upload_tab1:
                     render_audio_uploader("recitation", selected_chapter, selected_sloka, api_client, category_options)
 
                 with upload_tab2:
                     render_audio_uploader("explanation", selected_chapter, selected_sloka, api_client, category_options)
+                
+                st.markdown("</div>", unsafe_allow_html=True)
 
 def render_audio_uploader(kind: str, selected_chapter: dict, selected_sloka: dict, api_client, category_options: list):
     """Reusable function for rendering audio upload UI for both recitation and explanation"""
-    st.write(f"Upload your {kind} of this sloka")
+    st.markdown(f"""
+    <div style="background: rgba(255, 255, 255, 0.05); padding: 1.5rem; border-radius: 10px; margin: 1rem 0;">
+        <h4 style="color: white; margin-bottom: 1rem;">Upload your {kind} of this sloka</h4>
+    """, unsafe_allow_html=True)
 
     # Get pre-built metadata
     uid = st.session_state.get('user_id') or (getattr(api_client, 'user_data', {}) or {}).get('id')
     filename, title, description = _build_media_metadata(selected_chapter, selected_sloka, uid or "user", kind)
 
-    # Category selection dropdown
-    st.subheader("📂 Category Selection")
+    # Category selection dropdown (hidden, using default)
     if category_options:
-        selected_category = st.selectbox(
-            f"Select category for {kind}",
-            options=category_options,
-            format_func=lambda x: x.get('name', x.get('id', 'Unknown')),
-            key=f"category_{kind}"
-        )
+        selected_category = category_options[0]  # Use first category as default
         category_id = selected_category.get('id') if selected_category else ""
     else:
-        st.warning("No categories available. Please contact support.")
-        category_id = ""
+        category_id = "ab9fa2ce-1f83-4e91-b89d-cca18e8b301e"  # Fallback default
 
     # Title and Description inputs (moved outside button block)
-    st.subheader("📝 Metadata")
+    st.markdown("**📝 Metadata**")
     custom_title = st.text_input(
         "Title", 
         value=title,
@@ -529,6 +539,8 @@ def render_audio_uploader(kind: str, selected_chapter: dict, selected_sloka: dic
         help="Enter a detailed description of your audio content",
         key=f"description_{kind}"
     )
+    
+    st.markdown("</div>", unsafe_allow_html=True)
 
     upload_mode = st.radio(
         "Choose input method",
@@ -554,11 +566,17 @@ def render_audio_uploader(kind: str, selected_chapter: dict, selected_sloka: dic
 
     else:
         if _RECORDING_AVAILABLE and _RECORDER_IMPL == "audio_recorder_streamlit":
-            st.markdown("<div style='padding:12px;border:1px solid rgba(255,255,255,0.2);border-radius:12px;background:rgba(255,255,255,0.06);margin-bottom:8px'>", unsafe_allow_html=True)
-            st.markdown(f"<div style='color:#fff;font-weight:600;margin-bottom:6px'>🎙️ Record {kind.capitalize()}</div>", unsafe_allow_html=True)
+            st.markdown(f"""
+            <div style='padding: 20px; border: 2px solid rgba(255,255,255,0.3); border-radius: 15px; 
+                        background: linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.05)); 
+                        margin: 20px 0; backdrop-filter: blur(10px); text-align: center;'>
+                <div style='color: white; font-weight: 600; font-size: 1.1rem; margin-bottom: 15px;'>
+                    🎙️ Record {kind.capitalize()}
+                </div>
+            """, unsafe_allow_html=True)
             rec = audio_recorder(
                 text="",
-                icon_size="2x",
+                icon_size="3x",
                 sample_rate=44100,
                 key=f"{kind}_recorder",
             )
@@ -570,8 +588,14 @@ def render_audio_uploader(kind: str, selected_chapter: dict, selected_sloka: dic
                 audio_bytes = rec
                 final_filename = filename
         elif _RECORDING_AVAILABLE and _RECORDER_IMPL == "mic_recorder":
-            st.markdown("<div style='padding:12px;border:1px solid rgba(255,255,255,0.2);border-radius:12px;background:rgba(255,255,255,0.06);margin-bottom:8px'>", unsafe_allow_html=True)
-            st.markdown(f"<div style='color:#fff;font-weight:600;margin-bottom:6px'>🎙️ Hold to Record {kind.capitalize()}</div>", unsafe_allow_html=True)
+            st.markdown(f"""
+            <div style='padding: 20px; border: 2px solid rgba(255,255,255,0.3); border-radius: 15px; 
+                        background: linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.05)); 
+                        margin: 20px 0; backdrop-filter: blur(10px); text-align: center;'>
+                <div style='color: white; font-weight: 600; font-size: 1.1rem; margin-bottom: 15px;'>
+                    🎙️ Hold to Record {kind.capitalize()}
+                </div>
+            """, unsafe_allow_html=True)
             rec = mic_recorder(start_prompt="🎙️ Hold to record", stop_prompt="⬆️ Release to stop", just_once=False, use_container_width=True, key=f"{kind}_mic")
             st.markdown("</div>", unsafe_allow_html=True)
             if rec and rec.get('bytes'):
@@ -581,8 +605,14 @@ def render_audio_uploader(kind: str, selected_chapter: dict, selected_sloka: dic
                 audio_bytes = rec['bytes']
                 final_filename = filename
         elif _RECORDING_AVAILABLE and _RECORDER_IMPL == "audiorecorder":
-            st.markdown("<div style='padding:12px;border:1px solid rgba(255,255,255,0.2);border-radius:12px;background:rgba(255,255,255,0.06);margin-bottom:8px'>", unsafe_allow_html=True)
-            st.markdown(f"<div style='color:#fff;font-weight:600;margin-bottom:6px'>🎙️ Click to Record {kind.capitalize()}</div>", unsafe_allow_html=True)
+            st.markdown(f"""
+            <div style='padding: 20px; border: 2px solid rgba(255,255,255,0.3); border-radius: 15px; 
+                        background: linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.05)); 
+                        margin: 20px 0; backdrop-filter: blur(10px); text-align: center;'>
+                <div style='color: white; font-weight: 600; font-size: 1.1rem; margin-bottom: 15px;'>
+                    🎙️ Click to Record {kind.capitalize()}
+                </div>
+            """, unsafe_allow_html=True)
             recorded = audiorecorder("Start recording", "Stop recording")
             st.markdown("</div>", unsafe_allow_html=True)
             if recorded and len(recorded) > 0:
@@ -601,46 +631,56 @@ def render_audio_uploader(kind: str, selected_chapter: dict, selected_sloka: dic
             st.warning("Recording not available. Please install 'audio-recorder-streamlit==0.0.10' and restart the app.")
 
     # Upload button
-    if audio_bytes is not None and st.button(f"Upload {kind.capitalize()}", key=f"upload_{kind}"):
-        if not api_client.auth_token or api_client.auth_token == 'TEST_TOKEN':
-            st.error("You must be signed in with a real account to upload.")
-            with st.expander("Why did this fail?"):
-                st.write("Uploads require a valid backend token. Test mode tokens cannot upload.")
-        elif len(audio_bytes or b"") < 1000:
-            st.error("Recording seems too short or empty. Please record again.")
-        elif not category_id:
-            st.error("Please select a category for your upload.")
-        else:
-            with st.spinner(f"Uploading {kind} to Swecha Corpus..."):
-                try:
-                    # Standardize to use audio_data parameter for both types
-                    response = get_api_client().upload_complete_audio(
-                        audio_data=audio_bytes,
-                        filename=final_filename or f"{kind}.wav",
-                        title=custom_title or title,
-                        category_id=category_id,
-                        language="telugu",
-                        release_rights="creator",
-                        description=custom_description or description
-                    )
-                    if response.get('success'):
-                        st.success(f"{kind.capitalize()} uploaded successfully to Swecha Corpus!")
-                        upload_data = response.get('data', {})
-                        if upload_data.get('id'):
-                            st.info(f"Upload ID: {upload_data['id']}")
-                    else:
-                        data = response.get('data', {}) or {}
-                        msg = data.get('message') or data.get('error') or data.get('detail') or 'Unknown error'
-                        st.error(f"Upload failed: {msg}")
-                        with st.expander("Show server response"):
-                            st.write({
-                                'status_code': response.get('status_code'),
-                                'data': data,
-                                'filename': final_filename,
-                                'bytes': len(audio_bytes or b'')
-                            })
-                except Exception as e:
-                    st.error(f"Upload error: {str(e)}")
+    if audio_bytes is not None:
+        st.markdown("""
+        <div style='margin: 20px 0; text-align: center;'>
+        """, unsafe_allow_html=True)
+        if st.button(f"🚀 Upload {kind.capitalize()}", key=f"upload_{kind}", use_container_width=True):
+            if not api_client.auth_token or api_client.auth_token == 'TEST_TOKEN':
+                st.error("You must be signed in with a real account to upload.")
+                with st.expander("Why did this fail?"):
+                    st.write("Uploads require a valid backend token. Test mode tokens cannot upload.")
+            elif len(audio_bytes or b"") < 1000:
+                st.error("Recording seems too short or empty. Please record again.")
+            elif not category_id:
+                st.error("Please select a category for your upload.")
+            else:
+                with st.spinner(f"Uploading {kind} to Swecha Corpus..."):
+                    try:
+                        # Standardize to use audio_data parameter for both types
+                        response = get_api_client().upload_complete_audio(
+                            audio_data=audio_bytes,
+                            filename=final_filename or f"{kind}.wav",
+                            title=custom_title or title,
+                            category_id=category_id,
+                            language="telugu",
+                            release_rights="creator",
+                            description=custom_description or description
+                        )
+                        if response.get('success'):
+                            st.success(f"✅ {kind.capitalize()} uploaded successfully!")
+                            # Store upload info in session for persistence
+                            upload_key = f"last_{kind}_upload"
+                            st.session_state[upload_key] = {
+                                'timestamp': st.session_state.get('upload_timestamp', ''),
+                                'title': custom_title or title,
+                                'category': selected_category.get('name', 'Unknown') if selected_category else 'Unknown'
+                            }
+                        else:
+                            data = response.get('data', {}) or {}
+                            msg = data.get('message') or data.get('error') or data.get('detail') or 'Unknown error'
+                            st.error(f"Upload failed: {msg}")
+                            with st.expander("Show server response"):
+                                st.write({
+                                    'status_code': response.get('status_code'),
+                                    'data': data,
+                                    'filename': final_filename,
+                                    'bytes': len(audio_bytes or b'')
+                                })
+                    except Exception as e:
+                        st.error(f"Upload error: {str(e)}")
+        
+        st.markdown("</div>", unsafe_allow_html=True)
 
 def main():
     st.set_page_config(
