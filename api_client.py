@@ -4,6 +4,7 @@ import uuid
 import os
 import websockets
 import requests
+import streamlit as st
 
 
 from typing import Optional, Dict, Any
@@ -16,7 +17,7 @@ class SwechaAPIClient:
         self.api_base_url = "https://api.corpus.swecha.org/api/v1"
         self.auth_token = None
         self.user_data = None
-        self.chunk_size = 5 * 1024 * 1024  # 5MB
+        self.chunk_size = 5 * 1024 * 1024  # 5MB 
 
         self.session = requests.Session()
     
@@ -75,7 +76,17 @@ class SwechaAPIClient:
             token = response["data"].get("access_token")
             if token:
                 self.auth_token = token
-                self.user_data = response["data"].get("user", {})
+                # For login endpoint, user data might be in a different structure
+                # Try to get user data from the response
+                user_data = response["data"].get("user", {})
+                if not user_data:
+                    # If no user data in response, we'll get it from /auth/me endpoint
+                    user_info = self.get_user_info()
+                    if user_info.get("success"):
+                        user_data = user_info.get("data", {})
+                self.user_data = user_data
+                # Set authorization header in session
+                self.session.headers.update({"Authorization": f"Bearer {token}"})
         
         return response
     
@@ -112,90 +123,104 @@ class SwechaAPIClient:
     def get_user_contributions(self, user_id: str) -> Dict[str, Any]:
         """Get user contributions"""
         return self._make_request("GET", f"/users/{user_id}/contributions", require_auth=True)
+    def _handle_response(self, response: requests.Response) -> Optional[Dict]:
+        """Handle API response and errors"""
+        try:
+            if response.status_code in [200, 201]:
+                return response.json()
+            elif response.status_code == 401:
+                st.error("Authentication failed. Please login again.")
+                st.session_state.authenticated = False
+                return None
+            elif response.status_code == 422:
+                try:
+                    error_detail = response.json().get('detail', 'Validation error')
+                    st.error(f"Validation error: {error_detail}. Full response: {response.text}") # Log full response text
+                except ValueError:
+                    st.error(f"Validation error: Could not parse error detail. Full response: {response.text}")
+                return None
+            else:
+                st.error(f"API Error ({response.status_code}): {response.text}")
+                return None
+        except Exception as e:
+            st.error(f"Error processing response: {str(e)}")
+            return None 
     
-    def upload_audio_chunk(self, file_data: bytes, filename: str,
-                           chunk_index: int, total_chunks: int, upload_uuid: str) -> dict:
-        """Upload a single audio chunk (multipart/form-data)."""
-        conn = http.client.HTTPSConnection(self.base_host)
-        boundary = f"----formdata-{uuid.uuid4().hex}"
-
-        # Build multipart body
-        body = []
-        # File chunk
-        body.append(f"--{boundary}\r\n")
-        body.append(f'Content-Disposition: form-data; name="chunk"; filename="{filename}"\r\n')
-        body.append("Content-Type: application/octet-stream\r\n\r\n")
-        body = "".join(body).encode() + file_data + b"\r\n"
-
-        # Extra fields
-        fields = {
-            "filename": filename,
-            "chunk_index": str(chunk_index),
-            "total_chunks": str(total_chunks),
-            "upload_uuid": upload_uuid,
-        }
-        for k, v in fields.items():
-            body += (
-                f"--{boundary}\r\n"
-                f'Content-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'
-            ).encode()
-
-        body += f"--{boundary}--\r\n".encode()
-
-        headers = {
-            "Authorization": f"Bearer {self.auth_token}",
-            "Content-Type": f"multipart/form-data; boundary={boundary}"
-        }
-
+    def upload_audio_chunk(self, chunk_data: bytes, filename: str, chunk_index: int, total_chunks: int, upload_uuid: str) -> Dict:
+        """Upload a single chunk of a file (POST /api/v1/records/upload/chunk)"""
         try:
-            conn.request("POST", f"{self.api_base}/records/upload/chunk", body, headers)
-            res = conn.getresponse()
-            data = res.read()
-            return {
-                "status_code": res.status,
-                "data": json.loads(data.decode("utf-8")) if data else {},
-                "success": 200 <= res.status < 300,
+            files = {"chunk": (filename, chunk_data, "application/octet-stream")}
+            data = {
+                "filename": filename,
+                "chunk_index": chunk_index,
+                "total_chunks": total_chunks,
+                "upload_uuid": upload_uuid
             }
-        finally:
-            conn.close()
+            
+            # Ensure authorization header is set
+            headers = {}
+            if self.auth_token:
+                headers["Authorization"] = f"Bearer {self.auth_token}"
 
-    def finalize_audio_upload(self, upload_uuid: str, total_chunks: int, filename: str,
-                              title: str, category_id: str, language: str,
-                              release_rights: str, description: str = "") -> dict:
-        """Finalize audio upload with metadata (URL-encoded like JS)."""
-        conn = http.client.HTTPSConnection(self.base_host)
+            response = self.session.post(
+                f"{self.api_base_url}/records/upload/chunk",  # Fixed URL - removed duplicate /api/v1
+                files=files,
+                data=data,
+                headers=headers
+            )
+            response_data = self._handle_response(response)
+            if response_data:
+                st.info(f"Chunk upload response: {response_data}") # Log the response
+                return {"success": True, "data": response_data}
+            else:
+                return {"success": False, "data": {"error": "Failed to upload chunk"}}
+        except requests.RequestException as e:
+            st.error(f"File chunk upload error: {str(e)}")
+            return {"success": False, "data": {"error": str(e)}}
 
-        params = {
-            "title": title,
-            "description": description,
-            "category_id": category_id,
-            "user_id": self.user_data.get("id") if self.user_data else "",
-            "media_type": "audio",
-            "upload_uuid": upload_uuid,
-            "filename": filename,
-            "total_chunks": str(total_chunks),
-            "release_rights": release_rights,
-            "language": language,
-            "use_uid_filename": "false",
-        }
-
-        body = urlencode(params)
-        headers = {
-            "Authorization": f"Bearer {self.auth_token}",
-            "Content-Type": "application/x-www-form-urlencoded"
-        }
-
+    def finalize_audio_upload(self, title: str, description: str, media_type: str, filename: str, total_chunks: int, release_rights: str, language: str, upload_uuid: str, user_id: str, category_id: str, latitude: Optional[float] = None, longitude: Optional[float] = None, use_uid_filename: Optional[bool] = None) -> Optional[Dict]:
+        """Finalize chunked upload and create a record (POST /api/v1/records/upload)"""
         try:
-            conn.request("POST", f"{self.api_base}/records/upload", body, headers)
-            res = conn.getresponse()
-            data = res.read()
-            return {
-                "status_code": res.status,
-                "data": json.loads(data.decode("utf-8")) if data else {},
-                "success": 200 <= res.status < 300,
+            data = {
+                "title": title,
+                "description": description,
+                "media_type": media_type,
+                "filename": filename,
+                "total_chunks": total_chunks,
+                "release_rights": release_rights,
+                "language": language,
+                "upload_uuid": upload_uuid,
+                "user_id": user_id,
+                "category_id": category_id,
             }
-        finally:
-            conn.close()
+            if latitude is not None:
+                data["latitude"] = latitude
+            if longitude is not None:
+                data["longitude"] = longitude
+            if use_uid_filename is not None:
+                data["use_uid_filename"] = use_uid_filename
+
+            st.info(f"Finalizing record with data: {data}") # Added logging for data being sent
+
+            # Set authorization header
+            headers = {}
+            if self.auth_token:
+                headers["Authorization"] = f"Bearer {self.auth_token}"
+
+            response = self.session.post(
+                f"{self.api_base_url}/records/upload",  # Fixed URL - removed duplicate /api/v1
+                data=data, # Send data as form-encoded
+                headers=headers
+            )
+            response_data = self._handle_response(response)
+            if response_data:
+                return {"success": True, "data": response_data}
+            else:
+                return {"success": False, "data": {"error": "Failed to finalize upload"}}
+        except requests.RequestException as e:
+            st.error(f"Record finalization error: {str(e)}")
+            return None
+
     def upload_complete_audio(self, filepath: str, title: str,
                               category_id: str, language: str,
                               release_rights: str, description: str = "") -> dict:
@@ -214,6 +239,8 @@ class SwechaAPIClient:
 
         total_size = len(audio_data)
         total_chunks = (total_size + self.chunk_size - 1) // self.chunk_size
+        media_type = "audio"
+        user_id = self.user_data.get("id", "")
 
         # Upload chunks (0-based indexing)
         for chunk_index in range(total_chunks):
@@ -228,14 +255,19 @@ class SwechaAPIClient:
             total_chunks,    # total_chunks
             upload_uuid      # upload_uuid
             )
-            if not result["success"]:
+            if not result.get("success"):
                 return result  # stop on failure
 
         # Finalize upload
-        return self.finalize_audio_upload(
-            upload_uuid, total_chunks, filename, title,
-            category_id, language, release_rights, description
+        finalize_result = self.finalize_audio_upload(
+            title,description,media_type,filename,total_chunks, release_rights, 
+             language,upload_uuid,user_id,category_id,latitude=None,longitude=None,use_uid_filename=None
         )
+        
+        if finalize_result:
+            return {"success": True, "data": finalize_result}
+        else:
+            return {"success": False, "data": {"error": "Failed to finalize upload"}}
 
     def send_login_otp(self, phone_number: str) -> dict:
         """Send OTP for login"""
@@ -257,6 +289,8 @@ class SwechaAPIClient:
             if token:
                 self.auth_token = token
                 self.user_data = response["data"].get("user", {})
+                # Set authorization header in session
+                self.session.headers.update({"Authorization": f"Bearer {token}"})
         return response
 
     def get_user_info(self) -> dict:
@@ -279,6 +313,24 @@ class SwechaAPIClient:
             audio_count = contrib.get("audio", 0)
         response["audio_count"] = audio_count
         return response
+
+    def get_categories(self) -> dict:
+        """Get available categories for uploads"""
+        if not self.auth_token:
+            return {"success": False, "data": {"error": "Not authenticated"}}
+        
+        try:
+            response = self.session.get(
+                f"{self.api_base_url}/categories",
+                headers={"Authorization": f"Bearer {self.auth_token}"},
+                timeout=10
+            )
+            if response.status_code == 200:
+                return {"success": True, "data": response.json()}
+            else:
+                return {"success": False, "data": {"error": f"Status {response.status_code}: {response.text}"}}
+        except requests.RequestException as e:
+            return {"success": False, "data": {"error": str(e)}}
 
 # Global API client instance
 api_client = SwechaAPIClient()
