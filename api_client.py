@@ -221,23 +221,30 @@ class SwechaAPIClient:
             st.error(f"Record finalization error: {str(e)}")
             return None
 
-    def upload_complete_audio(self, filepath: str, title: str,
-                              category_id: str, language: str,
-                              release_rights: str, description: str = "") -> dict:
+    def upload_complete_audio(self, filepath: str = None, audio_data: bytes = None, filename: str = None, title: str = "",
+                              category_id: str = "", language: str = "telugu",
+                              release_rights: str = "creator", description: str = "") -> dict:
         """
         Upload a full audio file (splits into 5MB chunks, uploads, then finalizes).
-        Equivalent to the JavaScript submit handler.
+        Supports both filepath and audio_data parameters.
         """
         if not self.auth_token:
             return {"success": False, "data": {"error": "Not authenticated"}}
 
-        filename = filepath.split("/")[-1]
+        # Handle audio_data parameter
+        if audio_data is not None:
+            if not filename:
+                filename = f"audio_{uuid.uuid4().hex[:8]}.wav"
+            audio_bytes = audio_data
+        elif filepath:
+            filename = filepath.split("/")[-1]
+            with open(filepath, "rb") as f:
+                audio_bytes = f.read()
+        else:
+            return {"success": False, "data": {"error": "Either filepath or audio_data must be provided"}}
+
         upload_uuid = str(uuid.uuid4())
-
-        with open(filepath, "rb") as f:
-            audio_data = f.read()
-
-        total_size = len(audio_data)
+        total_size = len(audio_bytes)
         total_chunks = (total_size + self.chunk_size - 1) // self.chunk_size
         media_type = "audio"
         user_id = self.user_data.get("id", "")
@@ -246,7 +253,7 @@ class SwechaAPIClient:
         for chunk_index in range(total_chunks):
             start = chunk_index * self.chunk_size
             end = min(start + self.chunk_size, total_size)
-            chunk_data = audio_data[start:end]
+            chunk_data = audio_bytes[start:end]
 
             result = self.upload_audio_chunk(
             chunk_data,      # file_data

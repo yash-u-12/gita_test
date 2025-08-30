@@ -43,6 +43,7 @@ st.markdown("""
     .main-title {
         font-size: 3rem;
         font-weight: 700;
+        text-align: center;
         margin-bottom: 0.5rem;
         text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
     }
@@ -60,6 +61,7 @@ st.markdown("""
         border-left: 5px solid #667eea;
         margin: 1rem 0;
         backdrop-filter: blur(10px);
+        box-shadow: 0 8px 32px rgba(0,0,0,0.1);
     }
     
     .meaning-section {
@@ -69,6 +71,12 @@ st.markdown("""
         border: 1px solid rgba(255, 255, 255, 0.2);
         margin: 1rem 0;
         backdrop-filter: blur(10px);
+        box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+        transition: transform 0.2s ease;
+    }
+    
+    .meaning-section:hover {
+        transform: translateY(-2px);
     }
     
     .meaning-title {
@@ -89,11 +97,14 @@ st.markdown("""
         color: white;
         font-size: 1.2rem;
         line-height: 1.8;
+        text-align: center;
+        font-weight: 500;
     }
     
     .meaning-text {
         color: rgba(255, 255, 255, 0.9);
         line-height: 1.6;
+        font-size: 1rem;
     }
     
     .stSelectbox > div > div {
@@ -104,6 +115,59 @@ st.markdown("""
     
     .stSelectbox > div > div > div {
         color: white;
+    }
+    
+    .stButton > button {
+        background: linear-gradient(45deg, #667eea, #764ba2);
+        border: none;
+        border-radius: 10px;
+        color: white;
+        font-weight: 600;
+        padding: 0.5rem 1.5rem;
+        transition: all 0.3s ease;
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+    }
+    
+    .section-header {
+        background: rgba(255, 255, 255, 0.1);
+        padding: 1rem 1.5rem;
+        border-radius: 10px;
+        margin: 1.5rem 0 1rem 0;
+        border-left: 4px solid #667eea;
+        backdrop-filter: blur(10px);
+    }
+    
+    .section-header h3 {
+        color: white;
+        margin: 0;
+        font-size: 1.3rem;
+        font-weight: 600;
+    }
+    
+    .audio-player {
+        background: rgba(255, 255, 255, 0.1);
+        padding: 1rem;
+        border-radius: 10px;
+        margin: 1rem 0;
+        backdrop-filter: blur(10px);
+    }
+    
+    .info-box {
+        background: rgba(255, 255, 255, 0.1);
+        padding: 1rem;
+        border-radius: 10px;
+        border-left: 4px solid #ffd700;
+        margin: 1rem 0;
+        backdrop-filter: blur(10px);
+    }
+    
+    .info-box p {
+        color: rgba(255, 255, 255, 0.9);
+        margin: 0;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -128,7 +192,12 @@ def main():
         return
     
     # Chapter selection
-    st.markdown("### 📚 Select Chapter")
+    st.markdown("""
+    <div class="section-header">
+        <h3>📚 Select Chapter</h3>
+    </div>
+    """, unsafe_allow_html=True)
+    
     chapter_options = {f"Chapter {ch['chapter_number']}: {ch['chapter_name']}": ch for ch in chapters}
     selected_chapter_display = st.selectbox(
         "Choose a chapter to explore:",
@@ -141,11 +210,20 @@ def main():
         # Fetch slokas for selected chapter from Supabase
         slokas = db_manager.get_slokas_by_chapter(selected_chapter['id'])
         if not slokas:
-            st.info("No slokas found for this chapter.")
+            st.markdown("""
+            <div class="info-box">
+                <p>No slokas found for this chapter.</p>
+            </div>
+            """, unsafe_allow_html=True)
             return
         
         # Sloka selection
-        st.markdown("### 🎯 Select Sloka")
+        st.markdown("""
+        <div class="section-header">
+            <h3>🎯 Select Sloka</h3>
+        </div>
+        """, unsafe_allow_html=True)
+        
         sloka_options = {f"Sloka {sloka['sloka_number']}": sloka for sloka in slokas}
         selected_sloka_display = st.selectbox(
             "Choose a sloka to read:",
@@ -156,7 +234,11 @@ def main():
             selected_sloka = sloka_options[selected_sloka_display]
             
             # Display sloka content
-            st.markdown(f"### 📖 Sloka {selected_sloka['sloka_number']} - Chapter {selected_chapter['chapter_number']}: {selected_chapter['chapter_name']}")
+            st.markdown(f"""
+            <div class="section-header">
+                <h3>📖 Sloka {selected_sloka['sloka_number']} - Chapter {selected_chapter['chapter_number']}: {selected_chapter['chapter_name']}</h3>
+            </div>
+            """, unsafe_allow_html=True)
             
             # Sloka text display
             st.markdown("""
@@ -205,12 +287,25 @@ def main():
                 st.markdown("</div>", unsafe_allow_html=True)
             
             # Reference audio section
-            st.markdown("### 🎵 Reference Audio")
+            st.markdown("""
+            <div class="section-header">
+                <h3>🎵 Reference Audio</h3>
+            </div>
+            """, unsafe_allow_html=True)
+            
             ref_url = selected_sloka.get("reference_audio_url")
             if ref_url:
+                st.markdown("""
+                <div class="audio-player">
+                """, unsafe_allow_html=True)
                 st.audio(ref_url, format="audio/mp3")
+                st.markdown("</div>", unsafe_allow_html=True)
             else:
-                st.info("No reference audio available for this sloka.")
+                st.markdown("""
+                <div class="info-box">
+                    <p>No reference audio available for this sloka.</p>
+                </div>
+                """, unsafe_allow_html=True)
     
     # Footer
     st.markdown("---")
