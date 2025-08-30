@@ -565,14 +565,18 @@ def show_main_app():
                         else:
                             with st.spinner("Uploading recitation to Swecha Corpus..."):
                                 try:
+                                    with open("recitation.wav", "wb") as f:
+                                        f.write(audio_bytes)
                                     response = get_api_client().upload_complete_audio(
-                                        audio_data=audio_bytes,
-                                        filename=filename or "recitation.wav",
-                                        title=title,
-                                        category_id=category_id_input.strip() or "1",
+                                        #audio_data=audio_bytes,
+                                        #filename=filename or "recitation.wav",
+                                        filepath="recitation.wav",
+                                        title = st.text_input("Enter Title", value="Bhagavad Gita Sloka") or "Untitled",
+
+                                        category_id=int(category_id_input.strip() or "1"),
                                         language="telugu",
                                         release_rights="creator",
-                                        description=description
+                                        description=st.text_input("Enter description", value="the sloka belongs to which chapter")
                                     )
                                     if response.get('success'):
                                         st.success("Recitation uploaded successfully to Swecha Corpus!")

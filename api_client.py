@@ -3,8 +3,11 @@ import json
 import uuid
 import os
 import websockets
+import requests
+
 
 from typing import Optional, Dict, Any
+from urllib.parse import urlencode
 
 class SwechaAPIClient:
     def __init__(self):
@@ -14,6 +17,8 @@ class SwechaAPIClient:
         self.auth_token = None
         self.user_data = None
         self.chunk_size = 5 * 1024 * 1024  # 5MB
+
+        self.session = requests.Session()
     
     def _make_request(self, method: str, endpoint: str, payload: Dict = None, headers: Dict = None, require_auth: bool = False) -> Dict:
         """Make HTTP request to Swecha API"""
@@ -108,66 +113,56 @@ class SwechaAPIClient:
         """Get user contributions"""
         return self._make_request("GET", f"/users/{user_id}/contributions", require_auth=True)
     
-    def upload_audio_chunk(self, file_data: bytes, filename: str, chunk_index: int, total_chunks: int, upload_uuid: str) -> Dict[str, Any]:
-        """Upload audio file in chunks"""
+    def upload_audio_chunk(self, file_data: bytes, filename: str,
+                           chunk_index: int, total_chunks: int, upload_uuid: str) -> dict:
+        """Upload a single audio chunk (multipart/form-data)."""
         conn = http.client.HTTPSConnection(self.base_host)
-        
-        # Create multipart form data manually
         boundary = f"----formdata-{uuid.uuid4().hex}"
-        
-        # Create form data
-        form_data = []
-        
-        # Add file chunk
-        form_data.append(f"--{boundary}")
-        form_data.append(f'Content-Disposition: form-data; name="chunk"; filename="{filename}"')
-        form_data.append("Content-Type: application/octet-stream")
-        form_data.append("")
-        
-        # Convert form data to bytes
-        form_header = "\r\n".join(form_data).encode() + b"\r\n"
-        
-        # Add other fields
-        other_fields = f"\r\n--{boundary}\r\n"
-        other_fields += f'Content-Disposition: form-data; name="filename"\r\n\r\n{filename}\r\n'
-        other_fields += f"--{boundary}\r\n"
-        other_fields += f'Content-Disposition: form-data; name="chunk_index"\r\n\r\n{chunk_index}\r\n'
-        other_fields += f"--{boundary}\r\n"
-        other_fields += f'Content-Disposition: form-data; name="total_chunks"\r\n\r\n{total_chunks}\r\n'
-        other_fields += f"--{boundary}\r\n"
-        other_fields += f'Content-Disposition: form-data; name="upload_uuid"\r\n\r\n{upload_uuid}\r\n'
-        other_fields += f"--{boundary}--\r\n"
-        
-        body = form_header + file_data + other_fields.encode()
-        
+
+        # Build multipart body
+        body = []
+        # File chunk
+        body.append(f"--{boundary}\r\n")
+        body.append(f'Content-Disposition: form-data; name="chunk"; filename="{filename}"\r\n')
+        body.append("Content-Type: application/octet-stream\r\n\r\n")
+        body = "".join(body).encode() + file_data + b"\r\n"
+
+        # Extra fields
+        fields = {
+            "filename": filename,
+            "chunk_index": str(chunk_index),
+            "total_chunks": str(total_chunks),
+            "upload_uuid": upload_uuid,
+        }
+        for k, v in fields.items():
+            body += (
+                f"--{boundary}\r\n"
+                f'Content-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'
+            ).encode()
+
+        body += f"--{boundary}--\r\n".encode()
+
         headers = {
             "Authorization": f"Bearer {self.auth_token}",
             "Content-Type": f"multipart/form-data; boundary={boundary}"
         }
-        
+
         try:
             conn.request("POST", f"{self.api_base}/records/upload/chunk", body, headers)
             res = conn.getresponse()
             data = res.read()
-            
             return {
                 "status_code": res.status,
                 "data": json.loads(data.decode("utf-8")) if data else {},
-                "success": 200 <= res.status < 300
-            }
-        except Exception as e:
-            return {
-                "status_code": 500,
-                "data": {"error": str(e)},
-                "success": False
+                "success": 200 <= res.status < 300,
             }
         finally:
             conn.close()
-    
+
     def finalize_audio_upload(self, upload_uuid: str, total_chunks: int, filename: str,
-                            title: str, category_id: str, language: str, release_rights: str,
-                            description: str = "", media_type: str = "audio") -> Dict[str, Any]:
-        """Finalize audio upload after all chunks are uploaded (URL-encoded to match provided JS)."""
+                              title: str, category_id: str, language: str,
+                              release_rights: str, description: str = "") -> dict:
+        """Finalize audio upload with metadata (URL-encoded like JS)."""
         conn = http.client.HTTPSConnection(self.base_host)
 
         params = {
@@ -175,7 +170,7 @@ class SwechaAPIClient:
             "description": description,
             "category_id": category_id,
             "user_id": self.user_data.get("id") if self.user_data else "",
-            "media_type": media_type,
+            "media_type": "audio",
             "upload_uuid": upload_uuid,
             "filename": filename,
             "total_chunks": str(total_chunks),
@@ -184,10 +179,7 @@ class SwechaAPIClient:
             "use_uid_filename": "false",
         }
 
-        # URL-encode body like the JS example
-        from urllib.parse import urlencode
         body = urlencode(params)
-
         headers = {
             "Authorization": f"Bearer {self.auth_token}",
             "Content-Type": "application/x-www-form-urlencoded"
@@ -197,55 +189,54 @@ class SwechaAPIClient:
             conn.request("POST", f"{self.api_base}/records/upload", body, headers)
             res = conn.getresponse()
             data = res.read()
-            
             return {
                 "status_code": res.status,
                 "data": json.loads(data.decode("utf-8")) if data else {},
-                "success": 200 <= res.status < 300
-            }
-        except Exception as e:
-            return {
-                "status_code": 500,
-                "data": {"error": str(e)},
-                "success": False
+                "success": 200 <= res.status < 300,
             }
         finally:
             conn.close()
-    
-    def upload_complete_audio(self, audio_data: bytes, filename: str, title: str, 
-                            category_id: str = "1", language: str = "te", 
-                            release_rights: str = "open", description: str = "",
-                            chunk_size: int = 5242880) -> Dict[str, Any]:
-        """Upload complete audio file in chunks"""
+    def upload_complete_audio(self, filepath: str, title: str,
+                              category_id: str, language: str,
+                              release_rights: str, description: str = "") -> dict:
+        """
+        Upload a full audio file (splits into 5MB chunks, uploads, then finalizes).
+        Equivalent to the JavaScript submit handler.
+        """
         if not self.auth_token:
             return {"success": False, "data": {"error": "Not authenticated"}}
-        
-        # Generate upload UUID
+
+        filename = filepath.split("/")[-1]
         upload_uuid = str(uuid.uuid4())
-        
-        # Calculate chunks
+
+        with open(filepath, "rb") as f:
+            audio_data = f.read()
+
         total_size = len(audio_data)
-        total_chunks = (total_size + chunk_size - 1) // chunk_size
-        
-        # Upload chunks
-        for i in range(total_chunks):
-            start = i * chunk_size
-            end = min(start + chunk_size, total_size)
+        total_chunks = (total_size + self.chunk_size - 1) // self.chunk_size
+
+        # Upload chunks (0-based indexing)
+        for chunk_index in range(total_chunks):
+            start = chunk_index * self.chunk_size
+            end = min(start + self.chunk_size, total_size)
             chunk_data = audio_data[start:end]
-            
+
             result = self.upload_audio_chunk(
-                chunk_data, filename, i, total_chunks, upload_uuid
+            chunk_data,      # file_data
+            filename,        # filename
+            chunk_index,     # chunk_index (0-based)
+            total_chunks,    # total_chunks
+            upload_uuid      # upload_uuid
             )
-            
             if not result["success"]:
-                return result
-        
+                return result  # stop on failure
+
         # Finalize upload
         return self.finalize_audio_upload(
-            upload_uuid, total_chunks, filename, title, 
+            upload_uuid, total_chunks, filename, title,
             category_id, language, release_rights, description
         )
-    
+
     def send_login_otp(self, phone_number: str) -> dict:
         """Send OTP for login"""
         payload = {
