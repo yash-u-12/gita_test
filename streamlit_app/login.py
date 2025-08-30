@@ -567,53 +567,167 @@ def render_audio_uploader(kind: str, selected_chapter: dict, selected_sloka: dic
     else:
         if _RECORDING_AVAILABLE and _RECORDER_IMPL == "audio_recorder_streamlit":
             st.markdown(f"""
-            <div style='padding: 20px; border: 2px solid rgba(255,255,255,0.3); border-radius: 15px; 
+            <div style='padding: 30px; border: 2px solid rgba(255,255,255,0.3); border-radius: 20px; 
                         background: linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.05)); 
-                        margin: 20px 0; backdrop-filter: blur(10px); text-align: center;'>
-                <div style='color: white; font-weight: 600; font-size: 1.1rem; margin-bottom: 15px;'>
-                    🎙️ Record {kind.capitalize()}
+                        margin: 25px 0; backdrop-filter: blur(10px); text-align: center; box-shadow: 0 8px 32px rgba(0,0,0,0.3);'>
+                <div style='color: white; font-weight: 700; font-size: 1.3rem; margin-bottom: 25px; text-shadow: 0 2px 4px rgba(0,0,0,0.3);'>
+                    Audio Recording *
                 </div>
             """, unsafe_allow_html=True)
+            
+            # Custom styling for the audio recorder to match the image
+            st.markdown("""
+            <style>
+            .stAudioRecorder {
+                background: #ff4757 !important;
+                border-radius: 50px !important;
+                padding: 20px 40px !important;
+                border: none !important;
+                box-shadow: 0 4px 15px rgba(255, 71, 87, 0.3) !important;
+                transition: all 0.3s ease !important;
+                margin: 15px auto !important;
+                display: inline-block !important;
+                color: white !important;
+                font-weight: 600 !important;
+                font-size: 1.1rem !important;
+                min-width: 200px !important;
+            }
+            .stAudioRecorder:hover {
+                transform: translateY(-2px) !important;
+                box-shadow: 0 6px 20px rgba(255, 71, 87, 0.4) !important;
+                background: #ff3742 !important;
+            }
+            .stAudioRecorder:active {
+                transform: translateY(0) !important;
+                box-shadow: 0 2px 10px rgba(255, 71, 87, 0.3) !important;
+            }
+            </style>
+            """, unsafe_allow_html=True)
+            
             rec = audio_recorder(
-                text="",
-                icon_size="3x",
+                text="🎤 Start Recording",
+                icon_size="1x",
                 sample_rate=44100,
                 key=f"{kind}_recorder",
             )
             st.markdown("</div>", unsafe_allow_html=True)
             if rec:
-                st.audio(rec, format='audio/wav')
                 dur = _compute_wav_duration_seconds(rec)
-                st.caption(f"Duration: {dur} seconds")
+                st.markdown("""
+                <div style='background: rgba(255, 255, 255, 0.1); border-radius: 15px; padding: 25px; margin: 20px 0; text-align: center;'>
+                    <div style='color: #ff4757; font-weight: 700; font-size: 2rem; margin-bottom: 15px;'>
+                        {duration}
+                    </div>
+                    <div style='color: white; font-weight: 600; font-size: 1.1rem; margin-bottom: 20px;'>
+                        Recording Complete!
+                    </div>
+                </div>
+                """.format(duration=f"{int(dur//60)}:{int(dur%60):02d}"), unsafe_allow_html=True)
+                st.audio(rec, format='audio/wav')
                 audio_bytes = rec
                 final_filename = filename
         elif _RECORDING_AVAILABLE and _RECORDER_IMPL == "mic_recorder":
             st.markdown(f"""
-            <div style='padding: 20px; border: 2px solid rgba(255,255,255,0.3); border-radius: 15px; 
+            <div style='padding: 30px; border: 2px solid rgba(255,255,255,0.3); border-radius: 20px; 
                         background: linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.05)); 
-                        margin: 20px 0; backdrop-filter: blur(10px); text-align: center;'>
-                <div style='color: white; font-weight: 600; font-size: 1.1rem; margin-bottom: 15px;'>
-                    🎙️ Hold to Record {kind.capitalize()}
+                        margin: 25px 0; backdrop-filter: blur(10px); text-align: center; box-shadow: 0 8px 32px rgba(0,0,0,0.3);'>
+                <div style='color: white; font-weight: 700; font-size: 1.3rem; margin-bottom: 25px; text-shadow: 0 2px 4px rgba(0,0,0,0.3);'>
+                    Audio Recording *
                 </div>
             """, unsafe_allow_html=True)
-            rec = mic_recorder(start_prompt="🎙️ Hold to record", stop_prompt="⬆️ Release to stop", just_once=False, use_container_width=True, key=f"{kind}_mic")
+            
+            # Custom styling for the mic recorder to match the image
+            st.markdown("""
+            <style>
+            .stMicRecorder {
+                background: #ff4757 !important;
+                border-radius: 50px !important;
+                padding: 20px 40px !important;
+                border: none !important;
+                box-shadow: 0 4px 15px rgba(255, 71, 87, 0.3) !important;
+                transition: all 0.3s ease !important;
+                margin: 15px auto !important;
+                display: inline-block !important;
+                color: white !important;
+                font-weight: 600 !important;
+                font-size: 1.1rem !important;
+                min-width: 200px !important;
+            }
+            .stMicRecorder:hover {
+                transform: translateY(-2px) !important;
+                box-shadow: 0 6px 20px rgba(255, 71, 87, 0.4) !important;
+                background: #ff3742 !important;
+            }
+            .stMicRecorder:active {
+                transform: translateY(0) !important;
+                box-shadow: 0 2px 10px rgba(255, 71, 87, 0.3) !important;
+            }
+            </style>
+            """, unsafe_allow_html=True)
+            
+            rec = mic_recorder(
+                start_prompt="🎤 Start Recording", 
+                stop_prompt="⏹️ Stop Recording", 
+                just_once=False, 
+                use_container_width=True, 
+                key=f"{kind}_mic"
+            )
             st.markdown("</div>", unsafe_allow_html=True)
             if rec and rec.get('bytes'):
-                st.audio(rec['bytes'], format='audio/wav')
                 dur = _compute_wav_duration_seconds(rec['bytes'])
-                st.caption(f"Duration: {dur} seconds")
+                st.markdown("""
+                <div style='background: rgba(255, 255, 255, 0.1); border-radius: 15px; padding: 25px; margin: 20px 0; text-align: center;'>
+                    <div style='color: #ff4757; font-weight: 700; font-size: 2rem; margin-bottom: 15px;'>
+                        {duration}
+                    </div>
+                    <div style='color: white; font-weight: 600; font-size: 1.1rem; margin-bottom: 20px;'>
+                        Recording Complete!
+                    </div>
+                </div>
+                """.format(duration=f"{int(dur//60)}:{int(dur%60):02d}"), unsafe_allow_html=True)
+                st.audio(rec['bytes'], format='audio/wav')
                 audio_bytes = rec['bytes']
                 final_filename = filename
         elif _RECORDING_AVAILABLE and _RECORDER_IMPL == "audiorecorder":
             st.markdown(f"""
-            <div style='padding: 20px; border: 2px solid rgba(255,255,255,0.3); border-radius: 15px; 
+            <div style='padding: 30px; border: 2px solid rgba(255,255,255,0.3); border-radius: 20px; 
                         background: linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.05)); 
-                        margin: 20px 0; backdrop-filter: blur(10px); text-align: center;'>
-                <div style='color: white; font-weight: 600; font-size: 1.1rem; margin-bottom: 15px;'>
-                    🎙️ Click to Record {kind.capitalize()}
+                        margin: 25px 0; backdrop-filter: blur(10px); text-align: center; box-shadow: 0 8px 32px rgba(0,0,0,0.3);'>
+                <div style='color: white; font-weight: 700; font-size: 1.3rem; margin-bottom: 25px; text-shadow: 0 2px 4px rgba(0,0,0,0.3);'>
+                    Audio Recording *
                 </div>
             """, unsafe_allow_html=True)
-            recorded = audiorecorder("Start recording", "Stop recording")
+            
+            # Custom styling for the audiorecorder to match the image
+            st.markdown("""
+            <style>
+            .stAudioRecorder {
+                background: #ff4757 !important;
+                border-radius: 50px !important;
+                padding: 20px 40px !important;
+                border: none !important;
+                box-shadow: 0 4px 15px rgba(255, 71, 87, 0.3) !important;
+                transition: all 0.3s ease !important;
+                margin: 15px auto !important;
+                display: inline-block !important;
+                color: white !important;
+                font-weight: 600 !important;
+                font-size: 1.1rem !important;
+                min-width: 200px !important;
+            }
+            .stAudioRecorder:hover {
+                transform: translateY(-2px) !important;
+                box-shadow: 0 6px 20px rgba(255, 71, 87, 0.4) !important;
+                background: #ff3742 !important;
+            }
+            .stAudioRecorder:active {
+                transform: translateY(0) !important;
+                box-shadow: 0 2px 10px rgba(255, 71, 87, 0.3) !important;
+            }
+            </style>
+            """, unsafe_allow_html=True)
+            
+            recorded = audiorecorder("🎤 Start Recording", "⏹️ Stop Recording")
             st.markdown("</div>", unsafe_allow_html=True)
             if recorded and len(recorded) > 0:
                 preview_buf = io.BytesIO()
@@ -622,9 +736,18 @@ def render_audio_uploader(kind: str, selected_chapter: dict, selected_sloka: dic
                     wf.setsampwidth(getattr(recorded, 'sample_width', 2))
                     wf.setframerate(getattr(recorded, 'frame_rate', 44100))
                     wf.writeframes(recorded.raw_data)
-                st.audio(preview_buf.getvalue(), format='audio/wav')
                 dur = _compute_wav_duration_seconds(preview_buf.getvalue())
-                st.caption(f"Duration: {dur} seconds")
+                st.markdown("""
+                <div style='background: rgba(255, 255, 255, 0.1); border-radius: 15px; padding: 25px; margin: 20px 0; text-align: center;'>
+                    <div style='color: #ff4757; font-weight: 700; font-size: 2rem; margin-bottom: 15px;'>
+                        {duration}
+                    </div>
+                    <div style='color: white; font-weight: 600; font-size: 1.1rem; margin-bottom: 20px;'>
+                        Recording Complete!
+                    </div>
+                </div>
+                """.format(duration=f"{int(dur//60)}:{int(dur%60):02d}"), unsafe_allow_html=True)
+                st.audio(preview_buf.getvalue(), format='audio/wav')
                 audio_bytes = preview_buf.getvalue()
                 final_filename = filename
         else:
@@ -633,8 +756,37 @@ def render_audio_uploader(kind: str, selected_chapter: dict, selected_sloka: dic
     # Upload button
     if audio_bytes is not None:
         st.markdown("""
-        <div style='margin: 20px 0; text-align: center;'>
+        <div style='margin: 25px 0; text-align: center;'>
         """, unsafe_allow_html=True)
+        
+        # Custom styling for the upload button
+        st.markdown("""
+        <style>
+        .stButton > button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+            border-radius: 50px !important;
+            padding: 15px 30px !important;
+            border: none !important;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4) !important;
+            transition: all 0.3s ease !important;
+            color: white !important;
+            font-weight: 700 !important;
+            font-size: 1.1rem !important;
+            text-transform: uppercase !important;
+            letter-spacing: 1px !important;
+        }
+        .stButton > button:hover {
+            transform: translateY(-3px) !important;
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.6) !important;
+            background: linear-gradient(135deg, #764ba2 0%, #667eea 100%) !important;
+        }
+        .stButton > button:active {
+            transform: translateY(-1px) !important;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4) !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        
         if st.button(f"🚀 Upload {kind.capitalize()}", key=f"upload_{kind}", use_container_width=True):
             if not api_client.auth_token or api_client.auth_token == 'TEST_TOKEN':
                 st.error("You must be signed in with a real account to upload.")
